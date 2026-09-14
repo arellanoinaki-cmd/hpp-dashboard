@@ -177,7 +177,7 @@ const SUPABASE_URL = "https://kjutwwgrrslgyvrskprk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_WQZ28cxIrxAKRdn8CWUQ5Q_5H4XOYMR";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy"];
+const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy / Javi Cojuangco"];
 const SKUS = [
   // Batch 1 — Order #HPC102340. Landed cost is still a placeholder estimate.
   {code:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", qty:30, landedCost:7334, order:"HPC102340"},
@@ -529,7 +529,6 @@ function renderInventory(){
   }).join('');
   return `
     <h2>Inventory</h2>
-    <p class="section-desc">Order #HPC102340 (Batch 1, landed cost is a placeholder estimate) and Order #HPC107629 (Batch 2, PAID — confirmed landed cost). Sold quantities update automatically from the sales log.</p>
     <div class="tbl-scroll">
       <table>
         <thead><tr><th>Paddle</th><th>Model</th><th>Color</th><th>Order #</th><th>Received</th><th>Sold</th><th>Remaining</th><th>Status</th><th>Landed cost</th></tr></thead>
@@ -623,7 +622,7 @@ function renderPayouts(){
   const t = computeTotals();
   const role = "Partner";
   const cards = PARTNERS.map(p=>{
-    if(p === "Juancho Sy"){
+    if(p === "Juancho Sy / Javi Cojuangco"){
       const half = t.perPartner / 2;
       return `<div class="payout-card">
         <div class="name">Juancho Sy / Javi Cojuangco</div>
