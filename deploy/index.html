@@ -171,34 +171,48 @@
 </div>
 <div class="toast" id="toast"></div>
 
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script>
 const SUPABASE_URL = "https://kjutwwgrrslgyvrskprk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_WQZ28cxIrxAKRdn8CWUQ5Q_5H4XOYMR";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy / Javi Cojuangco"];
+// INVENTORY DATA — the numbers to edit as things change:
+//   ordered  = quantity on the purchase order
+//   received = quantity that has actually arrived (update this as shipments land)
+//   demo     = units kept as permanent demo paddles, NOT for sale (default 0)
+//   Available to sell = received - demo - sold
+// landedCost already includes freight (and, for Batch 1, absorbed demo cost), so
+// freight is never deducted again anywhere.
 const SKUS = [
-  // Batch 1 — Order #HPC102340. Landed cost is still a placeholder estimate.
-  {code:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", qty:30, landedCost:7334, order:"HPC102340"},
-  {code:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", qty:30, landedCost:7334, order:"HPC102340"},
-  {code:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", qty:5, landedCost:7334, order:"HPC102340"},
-  {code:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", qty:5, landedCost:7334, order:"HPC102340"},
-  {code:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended)", qty:3, landedCost:7334, order:"HPC102340"},
-  {code:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended)", qty:3, landedCost:7334, order:"HPC102340"},
-  {code:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR", qty:12, landedCost:7334, order:"HPC102340"},
-  {code:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR", qty:12, landedCost:7334, order:"HPC102340"},
-  // Batch 2 — Order #HPC107629, PAID, confirmed landed cost (not an estimate).
-  {code:"J2CR-WHT-ORIG-B2", name:"J2CR — White", color:"White", model:"J2CR (5.5\" handle)", qty:20, landedCost:7440, order:"HPC107629"},
-  {code:"J2CR-BLU-ORIG-B2", name:"J2CR — Blue", color:"Blue", model:"J2CR (5.5\" handle)", qty:21, landedCost:7440, order:"HPC107629"},
-  {code:"J2CR-WHT-EXT-B2", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended, 6\" handle)", qty:7, landedCost:7440, order:"HPC107629"},
-  {code:"J2CR-BLU-EXT-B2", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended, 6\" handle)", qty:7, landedCost:7440, order:"HPC107629"},
-  {code:"J3CR-WHT-B2", name:"J3CR — White", color:"White", model:"J3CR", qty:3, landedCost:7440, order:"HPC107629"},
-  {code:"J3CR-BLU-B2", name:"J3CR — Blue", color:"Blue", model:"J3CR", qty:2, landedCost:7440, order:"HPC107629"},
-  {code:"J6CR-BLU-B2", name:"J6CR — Blue", color:"Blue", model:"J6CR", qty:20, landedCost:7440, order:"HPC107629"},
-  {code:"J6CR-WHT-B2", name:"J6CR — White", color:"White", model:"J6CR", qty:20, landedCost:7440, order:"HPC107629"},
+  // Batch 1 — Order #HPC102340. All 100 received. Landed cost: 727,288.49 net / 91 sellable = 7,992.18.
+  // 9 of the 100 are permanent demo units — set `demo` on the rows that hold them.
+  {code:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", ordered:30, received:30, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:30, received:30, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:5, received:5, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", ordered:5, received:5, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended)", ordered:3, received:3, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended)", ordered:3, received:3, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR", ordered:12, received:12, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR", ordered:12, received:12, demo:0, landedCost:7992.18, order:"HPC102340"},
+  // Batch 2 — Order #HPC107629. Only 46 of 100 have arrived. Landed cost is PROVISIONAL
+  // (749,265.51 so far / 100 = 7,492.66) until the last 54 paddles arrive and freight is billed.
+  {code:"J2CR-WHT-ORIG-B2", name:"J2CR — White", color:"White", model:"J2CR (5.5\" handle)", ordered:20, received:20, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-BLU-ORIG-B2", name:"J2CR — Blue", color:"Blue", model:"J2CR (5.5\" handle)", ordered:21, received:21, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-WHT-EXT-B2", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-BLU-EXT-B2", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J3CR-WHT-B2", name:"J3CR — White", color:"White", model:"J3CR", ordered:3, received:3, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J3CR-BLU-B2", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:2, received:2, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J6CR-BLU-B2", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J6CR-WHT-B2", name:"J6CR — White", color:"White", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
 ];
-const PRICE = {standard:12500, ff:11500};
+// Price tiers on Log a sale. "cost" (At landed cost) and "custom" have no fixed price here:
+// cost reads the selected paddle's landed cost; custom is typed in.
+const PRICE = {standard:12500, volume:11500, ff:11500};
+const VOLUME_MIN_QTY = 5;
+// Saved to sales.price_tier. Human-readable so it reads well in the Supabase table too.
+const TIER_LABELS = {standard:"Standard", volume:"Volume", ff:"Friends & family", cost:"At landed cost", custom:"Custom"};
 const AMB_TIERS = [{min:1,max:5,rate:500},{min:6,max:10,rate:650},{min:11,max:Infinity,rate:800}];
 
 let state = {inventory: SKUS.map(s=>({...s, sold:0})), sales: [], history: []};
@@ -209,9 +223,14 @@ let activeTab = "overview";
 // row comes back to the client (initial load, or the row returned by an
 // insert/update/delete). access_code (the PIN) is deliberately excluded: the
 // PIN should only ever travel FROM the client TO Supabase, never be read back.
-const SALE_COLUMNS = 'id,date,sku_code,paddle_name,qty,unit_price,total,customer,channel,sold_by,status,amount_paid,created_at';
+const SALE_COLUMNS = 'id,date,sku_code,paddle_name,qty,unit_price,total,customer,channel,sold_by,status,amount_paid,price_tier,created_at';
 
 function fmt(n){ return "₱" + Math.round(n).toLocaleString(); }
+// Two-decimal peso format, for landed cost (e.g. ₱7,992.18) where whole pesos would hide the cents.
+function fmtPrecise(n){ return "₱" + Number(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+// Units a partner can actually sell from an inventory row: arrived, minus demo units, minus already sold.
+function availableQty(s){ return s.received - (s.demo || 0) - s.sold; }
+function round2(n){ return Math.round(n * 100) / 100; }
 function today(){ return new Date().toISOString().slice(0,10); }
 
 const TRASH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>';
@@ -249,6 +268,7 @@ function rowToSale(row){
     id: row.id, date: row.date, skuCode: row.sku_code, skuName: row.paddle_name,
     qty: row.qty, unitPrice: row.unit_price, total: row.total, customer: row.customer,
     channel: row.channel, soldBy: row.sold_by, status: row.status, paid: row.amount_paid,
+    priceTier: row.price_tier || '',
     createdAt: row.created_at
   };
 }
@@ -396,7 +416,25 @@ function initials(name){
   return name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
 }
 
-function stockStatus(remaining){
+// Turns a Supabase/network error from the Log a Sale submit into a specific,
+// actionable message instead of one generic string — so a wrong PIN, a dropped
+// connection, and anything else unexpected are distinguishable at a glance.
+function describeSubmitError(error){
+  if(!error) return "Something went wrong — try again.";
+  const msg = (error.message || String(error) || '').toLowerCase();
+  const isRlsRejection = error.code === '42501' || msg.includes('row-level security') || msg.includes('policy');
+  if(isRlsRejection) return 'Incorrect PIN. Please try again.';
+  const isNetworkFailure = msg.includes('fetch') || msg.includes('network') || msg.includes('timeout')
+    || msg.includes('load failed') || error.name === 'TypeError' || error.name === 'AbortError';
+  if(isNetworkFailure) return "Connection failed — check your internet and try again.";
+  const detail = error.message || error.code || 'unknown error';
+  return `Couldn't log the sale (${detail}) — try again, or tell an admin this exact message.`;
+}
+
+function stockStatus(s){
+  // Nothing has arrived yet for this row — don't call it "Sold out".
+  if(s.received <= 0) return {cls:'low', label:'Not yet received'};
+  const remaining = availableQty(s);
   if(remaining <= 0) return {cls:'out', label:'Sold out'};
   if(remaining <= 3) return {cls:'low', label:'Low stock'};
   return {cls:'in', label:'In stock'};
@@ -411,9 +449,12 @@ function ambassadorCommission(name, unitsSoldByThem){
 }
 
 function computeTotals(){
-  const totalReceived = state.inventory.reduce((a,s)=>a+s.qty,0);
+  // "Received" counts only paddles that have actually arrived (not what is still on order).
+  const totalReceived = state.inventory.reduce((a,s)=>a+s.received,0);
+  const totalDemo = state.inventory.reduce((a,s)=>a+(s.demo||0),0);
   const totalSold = state.sales.reduce((a,s)=>a+s.qty,0);
-  const totalRemaining = totalReceived - totalSold;
+  // Available to sell excludes permanent demo units.
+  const totalAvailable = totalReceived - totalDemo - totalSold;
   const totalRevenue = state.sales.reduce((a,s)=>a+s.total,0);
   const totalOutstanding = state.sales.reduce((a,s)=>a+Math.max(0,s.total - s.paid),0);
   const totalCOGS = state.sales.reduce((a,s)=>{
@@ -441,7 +482,7 @@ function computeTotals(){
   const netProfit = totalRevenue - totalCOGS - totalCommission;
   const perPartner = netProfit / 3;
 
-  return {totalReceived, totalSold, totalRemaining, totalRevenue, totalOutstanding, totalCOGS, totalCommission, netProfit, perPartner, soldByPartner, ambassadorSales};
+  return {totalReceived, totalDemo, totalSold, totalAvailable, totalRevenue, totalOutstanding, totalCOGS, totalCommission, netProfit, perPartner, soldByPartner, ambassadorSales};
 }
 
 function render(){
@@ -490,7 +531,7 @@ function renderOverview(){
     <div class="grid">
       <div class="card"><div class="label">Paddles received</div><div class="value">${t.totalReceived}</div></div>
       <div class="card"><div class="label">Paddles sold</div><div class="value blue">${t.totalSold}</div></div>
-      <div class="card"><div class="label">Stock remaining</div><div class="value ${t.totalRemaining<=10?'amber':''}">${t.totalRemaining}</div></div>
+      <div class="card"><div class="label">Available to sell</div><div class="value ${t.totalAvailable<=10?'amber':''}">${t.totalAvailable}</div></div>
       <div class="card"><div class="label">Revenue</div><div class="value green">${fmt(t.totalRevenue)}</div></div>
       <div class="card"><div class="label">Outstanding balance</div><div class="value ${t.totalOutstanding>0?'red':''}">${fmt(t.totalOutstanding)}</div></div>
       <div class="card"><div class="label">Net profit (est.)</div><div class="value blue">${fmt(t.netProfit)}</div></div>
@@ -513,25 +554,27 @@ function renderOverview(){
 
 function renderInventory(){
   const rows = state.inventory.map(s=>{
-    const remaining = s.qty - s.sold;
-    const status = stockStatus(remaining);
+    const available = availableQty(s);
+    const status = stockStatus(s);
     return `<tr>
       <td>${s.name}</td>
       <td>${s.model}</td>
       <td>${s.color}</td>
       <td>#${s.order}</td>
-      <td>${s.qty}</td>
+      <td>${s.ordered}</td>
+      <td>${s.received}</td>
+      <td>${s.demo || 0}</td>
       <td>${s.sold}</td>
-      <td>${remaining}</td>
+      <td>${available}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
-      <td>${fmt(s.landedCost)}</td>
+      <td>${fmtPrecise(s.landedCost)}${s.provisional ? ' <span class="badge low">PROVISIONAL</span>' : ''}</td>
     </tr>`;
   }).join('');
   return `
     <h2>Inventory</h2>
     <div class="tbl-scroll">
       <table>
-        <thead><tr><th>Paddle</th><th>Model</th><th>Color</th><th>Order #</th><th>Received</th><th>Sold</th><th>Remaining</th><th>Status</th><th>Landed cost</th></tr></thead>
+        <thead><tr><th>Paddle</th><th>Model</th><th>Color</th><th>Order #</th><th>Ordered</th><th>Received</th><th>Demo (not for sale)</th><th>Sold</th><th>Available to sell</th><th>Status</th><th>Landed cost</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -539,10 +582,15 @@ function renderInventory(){
 }
 
 function renderSaleForm(){
-  const skuOptions = state.inventory.map(s=>{
-    const remaining = s.qty - s.sold;
+  // Only paddles that have actually arrived can be sold. Rows still on order are not offered.
+  const sellable = state.inventory.filter(s=>s.received > 0);
+  const skuOptions = sellable.map(s=>{
+    const remaining = availableQty(s);
     return `<option value="${s.code}" ${remaining<=0?'disabled':''}>${s.name} — #${s.order} (${remaining} left)</option>`;
   }).join('');
+  // The "At landed cost" label shows the cost of whichever paddle is selected; start from the first one in stock.
+  const firstSku = sellable.find(s=>availableQty(s) > 0) || sellable[0];
+  const costLabel = firstSku ? fmtPrecise(firstSku.landedCost) : '';
   const soldByOptions = PARTNERS.map(p=>`<option value="${p}" ${currentUser===p?'selected':''}>${p} (partner)</option>`).join('');
   return `
     <h2>Log a sale</h2>
@@ -560,15 +608,18 @@ function renderSaleForm(){
         <div class="field">
           <label>Price tier</label>
           <select id="f_price">
-            <option value="${PRICE.standard}">Standard — ${fmt(PRICE.standard)}</option>
-            <option value="${PRICE.ff}">Friends & family — ${fmt(PRICE.ff)}</option>
+            <option value="standard">Standard — ${fmt(PRICE.standard)}</option>
+            <option value="volume">Volume (${VOLUME_MIN_QTY}+ paddles in one purchase) — ${fmt(PRICE.volume)}</option>
+            <option value="ff">Friends &amp; family — ${fmt(PRICE.ff)}</option>
+            <option value="cost">At landed cost: ${costLabel}</option>
             <option value="custom">Custom amount</option>
           </select>
+          <div class="hint" id="tierHint" style="display:none;"></div>
         </div>
       </div>
       <div class="field" id="customPriceField" style="display:none;">
-        <label>Custom unit price (₱)</label>
-        <input type="number" id="f_customPrice" min="0">
+        <label id="customPriceLabel">Custom unit price (₱)</label>
+        <input type="number" id="f_customPrice" min="0" step="any">
       </div>
       <div class="row2">
         <div class="field">
@@ -604,7 +655,7 @@ function renderSaleForm(){
         </div>
         <div class="field">
           <label>Amount paid so far (₱)</label>
-          <input type="number" id="f_paid" min="0">
+          <input type="number" id="f_paid" min="0" step="any">
         </div>
       </div>
       <div class="field">
@@ -660,7 +711,7 @@ function renderSalesLog(){
       <div class="avatar">${initials(s.soldBy)}</div>
       <div class="activity-body">
         <div class="activity-view" id="view-${s.id}">
-          <div>${s.qty}x ${s.skuName} to ${s.customer} (${fmt(s.total)})</div>
+          <div>${s.qty}x ${s.skuName} to ${s.customer} (${fmt(s.total)}${s.priceTier ? ' · ' + s.priceTier : ''})</div>
           <div class="meta">${s.soldBy} · ${new Date(s.createdAt || s.date).toLocaleString()}</div>
         </div>
 
@@ -736,9 +787,52 @@ function renderHistory(){
 function attachHandlers(){
   const priceSel = document.getElementById('f_price');
   if(priceSel){
-    priceSel.onchange = ()=>{
-      document.getElementById('customPriceField').style.display = priceSel.value === 'custom' ? 'block' : 'none';
+    const skuSel = document.getElementById('f_sku');
+    const qtyInput = document.getElementById('f_qty');
+    const priceField = document.getElementById('customPriceField');
+    const priceLabel = document.getElementById('customPriceLabel');
+    const priceInput = document.getElementById('f_customPrice');
+    const hint = document.getElementById('tierHint');
+
+    // Re-syncs everything that depends on the paddle, quantity, or tier.
+    const refreshTier = ()=>{
+      const sku = state.inventory.find(s=>s.code === skuSel.value);
+      const tier = priceSel.value;
+
+      // "At landed cost" always shows the landed cost of the currently selected paddle's batch.
+      const costOpt = priceSel.querySelector('option[value="cost"]');
+      if(costOpt && sku) costOpt.textContent = `At landed cost: ${fmtPrecise(sku.landedCost)}`;
+
+      if(tier === 'cost'){
+        // Auto-filled and locked: the unit price is the landed cost, not something to type.
+        priceField.style.display = 'block';
+        priceLabel.textContent = 'Unit price (₱) — at landed cost';
+        priceInput.readOnly = true;
+        priceInput.value = sku ? sku.landedCost.toFixed(2) : '';
+      } else if(tier === 'custom'){
+        priceField.style.display = 'block';
+        priceLabel.textContent = 'Custom unit price (₱)';
+        if(priceInput.readOnly){ priceInput.readOnly = false; priceInput.value = ''; } // don't carry the locked cost over
+      } else {
+        priceField.style.display = 'none';
+        if(priceInput.readOnly){ priceInput.readOnly = false; priceInput.value = ''; }
+      }
+
+      // Suggest (never force) the Volume tier for 5+ paddles when Standard is selected.
+      const qty = parseInt(qtyInput.value, 10);
+      if(qty >= VOLUME_MIN_QTY && tier === 'standard'){
+        hint.style.display = 'block';
+        hint.innerHTML = `${VOLUME_MIN_QTY}+ paddles in one purchase qualifies for Volume pricing (${fmt(PRICE.volume)}). <a href="#" id="applyVolume" style="color:var(--accent);font-weight:600;">Use Volume tier</a>`;
+        document.getElementById('applyVolume').onclick = (ev)=>{ ev.preventDefault(); priceSel.value = 'volume'; refreshTier(); };
+      } else {
+        hint.style.display = 'none';
+        hint.innerHTML = '';
+      }
     };
+    priceSel.onchange = refreshTier;
+    skuSel.onchange = refreshTier;
+    qtyInput.oninput = refreshTier;
+    refreshTier();
   }
   const soldBySel = document.getElementById('f_soldby');
   if(soldBySel){
@@ -851,7 +945,7 @@ function attachHandlers(){
       if(!soldBy){ errBox.innerHTML = '<div class="error">Enter who sold it.</div>'; return; }
       if(!pin){ errBox.innerHTML = '<div class="error">Enter the PIN.</div>'; return; }
       btn.disabled = true;
-      const total = qty * unitPrice;
+      const total = round2(qty * unitPrice);
       const ok = await updateSale(id, {
         qty, unit_price: unitPrice, total, customer, channel, sold_by: soldBy, status
       }, pin);
@@ -877,9 +971,16 @@ function attachHandlers(){
       }
       const skuCode = document.getElementById('f_sku').value;
       const qty = parseInt(document.getElementById('f_qty').value, 10);
-      const priceVal = document.getElementById('f_price').value;
+      const tierKey = document.getElementById('f_price').value;
       const customPrice = document.getElementById('f_customPrice').value;
-      const unitPrice = priceVal === 'custom' ? parseFloat(customPrice) : parseFloat(priceVal);
+      const sku = state.inventory.find(s=>s.code===skuCode);
+      // Unit price comes from the tier: a fixed price, the paddle's landed cost, or whatever was typed in.
+      let unitPrice;
+      if(tierKey === 'custom') unitPrice = parseFloat(customPrice);
+      else if(tierKey === 'cost') unitPrice = sku ? sku.landedCost : NaN;
+      else unitPrice = PRICE[tierKey];
+      unitPrice = round2(unitPrice);
+      const priceTier = TIER_LABELS[tierKey] || '';
       const customer = document.getElementById('f_customer').value.trim();
       const channel = document.getElementById('f_channel').value.trim();
       let soldBy = document.getElementById('f_soldby').value;
@@ -896,33 +997,38 @@ function attachHandlers(){
         soldBy = ambName;
       }
       if(!pin){ errBox.innerHTML = '<div class="error">Enter the access PIN.</div>'; return; }
-      const sku = state.inventory.find(s=>s.code===skuCode);
-      const remaining = sku.qty - sku.sold;
+      if(!sku){ errBox.innerHTML = '<div class="error">Choose a paddle.</div>'; return; }
+      const remaining = availableQty(sku);
       if(qty > remaining){ errBox.innerHTML = `<div class="error">Only ${remaining} left in stock for this paddle.</div>`; return; }
 
-      const total = qty * unitPrice;
+      const total = round2(qty * unitPrice);
       const submitBtn = form.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
 
-      const { data, error } = await supabaseClient
-        .from('sales')
-        .insert([{
-          date: today(), sku_code: skuCode, paddle_name: sku.name,
-          qty, unit_price: unitPrice, total, customer, channel,
-          sold_by: soldBy, status, amount_paid: Math.min(paid, total),
-          access_code: pin
-        }])
-        .select(SALE_COLUMNS);
+      let data, error;
+      try{
+        const result = await supabaseClient
+          .from('sales')
+          .insert([{
+            date: today(), sku_code: skuCode, paddle_name: sku.name,
+            qty, unit_price: unitPrice, total, customer, channel,
+            sold_by: soldBy, status, amount_paid: Math.min(paid, total),
+            price_tier: priceTier,
+            access_code: pin
+          }])
+          .select(SALE_COLUMNS);
+        data = result.data; error = result.error;
+      }catch(e){
+        // A thrown exception (rather than a returned {error}) usually means
+        // the request never reached Supabase at all — e.g. no network,
+        // DNS failure, or the request timed out client-side.
+        error = e;
+      }
 
       submitBtn.disabled = false;
 
       if(error){
-        const msg = (error.message || '').toLowerCase();
-        if(error.code === '42501' || msg.includes('row-level security') || msg.includes('policy')){
-          errBox.innerHTML = '<div class="error">Incorrect PIN. Please try again.</div>';
-        } else {
-          errBox.innerHTML = '<div class="error">Couldn\'t log the sale — try again.</div>';
-        }
+        errBox.innerHTML = `<div class="error">${describeSubmitError(error)}</div>`;
         return;
       }
 
