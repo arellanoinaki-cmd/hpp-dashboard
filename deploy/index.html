@@ -213,6 +213,7 @@ const PRICE = {standard:12500, volume:11500, ff:11500};
 const VOLUME_MIN_QTY = 5;
 // Saved to sales.price_tier. Human-readable so it reads well in the Supabase table too.
 const TIER_LABELS = {standard:"Standard", volume:"Volume", ff:"Friends & family", cost:"At landed cost", custom:"Custom"};
+const TIER_KEY_BY_LABEL = Object.fromEntries(Object.entries(TIER_LABELS).map(([k,v])=>[v,k]));
 const AMB_TIERS = [{min:1,max:5,rate:500},{min:6,max:10,rate:650},{min:11,max:Infinity,rate:800}];
 
 let state = {inventory: SKUS.map(s=>({...s, sold:0})), sales: [], history: []};
@@ -231,6 +232,32 @@ function fmtPrecise(n){ return "₱" + Number(n).toLocaleString(undefined, {mini
 // Units a partner can actually sell from an inventory row: arrived, minus demo units, minus already sold.
 function availableQty(s){ return s.received - (s.demo || 0) - s.sold; }
 function round2(n){ return Math.round(n * 100) / 100; }
+// Whole pesos when the amount is whole, two decimals when it has cents (₱12,500 vs ₱7,992.18).
+function fmtMoney(n){ return Number.isInteger(+n) ? fmt(n) : fmtPrecise(n); }
+// Escapes text going into an HTML attribute/element so a name with quotes or < can't break the form.
+function esc(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// When editing a sale, its own units count as available again for its current paddle (so you can keep or swap it).
+function editAvailable(row, sale){ return availableQty(row) + (row.code === sale.skuCode ? sale.qty : 0); }
+function paddleLabel(code, fallbackName){
+  const r = SKUS.find(x=>x.code === code);
+  return r ? `${r.name} (#${r.order})` : (fallbackName || code || '');
+}
+// Lists what differs between two sale snapshots (shape of rowToSale), old → new. Used to build the
+// "what changed" lines in History, and to refuse a save when nothing actually changed.
+function diffSale(a, b){
+  const out = [];
+  const add = (label, from, to)=> out.push({label, from, to});
+  if(a.skuCode !== b.skuCode) add('Paddle', paddleLabel(a.skuCode, a.skuName), paddleLabel(b.skuCode, b.skuName));
+  if(+a.qty !== +b.qty) add('Quantity', a.qty, b.qty);
+  if(round2(+a.unitPrice) !== round2(+b.unitPrice)) add('Unit price', fmtMoney(a.unitPrice), fmtMoney(b.unitPrice));
+  if((a.priceTier || '') !== (b.priceTier || '')) add('Price tier', a.priceTier || 'none', b.priceTier || 'none');
+  if((a.customer || '') !== (b.customer || '')) add('Customer', a.customer || 'none', b.customer || 'none');
+  if((a.channel || '') !== (b.channel || '')) add('Channel', a.channel || 'none', b.channel || 'none');
+  if((a.soldBy || '') !== (b.soldBy || '')) add('Sold by', a.soldBy || 'none', b.soldBy || 'none');
+  if((a.status || '') !== (b.status || '')) add('Payment status', a.status || 'none', b.status || 'none');
+  if(round2(+a.paid || 0) !== round2(+b.paid || 0)) add('Amount paid', fmtMoney(a.paid || 0), fmtMoney(b.paid || 0));
+  return out;
+}
 function today(){ return new Date().toISOString().slice(0,10); }
 
 const TRASH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>';
@@ -352,6 +379,8 @@ async function deleteSale(id, pin){
 
 // Edits require the same access PIN, checked via the UPDATE RLS policy the
 // same way deletes are. `changes` is a plain object of snake_case columns.
+// Returns {ok:true}, {ok:false, reason:'pin'} for a rejected PIN, or
+// {ok:false, reason:'error', error} for anything else (network, database).
 async function updateSale(id, changes, pin){
   try{
     const existing = state.sales.find(s => String(s.id) === String(id));
@@ -364,8 +393,12 @@ async function updateSale(id, changes, pin){
       .update(changes)
       .eq('id', id)
       .select(SALE_COLUMNS);
-    if(error) return false;
-    if(!data || !data.length) return false; // RLS silently excluded the row — wrong PIN
+    if(error){
+      const m = (error.message || '').toLowerCase();
+      if(error.code === '42501' || m.includes('row-level security') || m.includes('policy')) return {ok:false, reason:'pin'};
+      return {ok:false, reason:'error', error};
+    }
+    if(!data || !data.length) return {ok:false, reason:'pin'}; // RLS silently excluded the row — wrong PIN
     const updated = rowToSale(data[0]);
     const idx = state.sales.findIndex(s => String(s.id) === String(id));
     if(idx !== -1) state.sales[idx] = updated; else state.sales.push(updated);
@@ -380,8 +413,8 @@ async function updateSale(id, changes, pin){
       paid: updated.paid, changedBy: currentUser || 'Unknown', changedAt: new Date().toISOString(),
       previousValues: previousSnapshot, newValues: updated
     });
-    return true;
-  }catch(e){ return false; }
+    return {ok:true};
+  }catch(e){ return {ok:false, reason:'error', error:e}; }
 }
 
 async function loadData(){
@@ -419,7 +452,8 @@ function initials(name){
 // Turns a Supabase/network error from the Log a Sale submit into a specific,
 // actionable message instead of one generic string — so a wrong PIN, a dropped
 // connection, and anything else unexpected are distinguishable at a glance.
-function describeSubmitError(error){
+function describeSubmitError(error, action){
+  action = action || 'log the sale';
   if(!error) return "Something went wrong — try again.";
   const msg = (error.message || String(error) || '').toLowerCase();
   const isRlsRejection = error.code === '42501' || msg.includes('row-level security') || msg.includes('policy');
@@ -428,7 +462,7 @@ function describeSubmitError(error){
     || msg.includes('load failed') || error.name === 'TypeError' || error.name === 'AbortError';
   if(isNetworkFailure) return "Connection failed — check your internet and try again.";
   const detail = error.message || error.code || 'unknown error';
-  return `Couldn't log the sale (${detail}) — try again, or tell an admin this exact message.`;
+  return `Couldn't ${action} (${detail}) — try again, or tell an admin this exact message.`;
 }
 
 function stockStatus(s){
@@ -702,6 +736,69 @@ function renderPayouts(){
   `;
 }
 
+// The edit form mirrors Log a sale: paddle, price tier (auto-filling the unit price), and payment —
+// pre-selected from the sale's current values. A sale with no saved tier opens as Custom at its current price.
+function editFormHtml(s){
+  const rows = state.inventory.filter(r => r.received > 0 || r.code === s.skuCode);
+  const paddleOpts = rows.map(r=>{
+    const left = editAvailable(r, s);
+    const isCurrent = r.code === s.skuCode;
+    return `<option value="${r.code}" ${isCurrent ? 'selected' : ''} ${(left <= 0 && !isCurrent) ? 'disabled' : ''}>${r.name} — #${r.order} (${left} left)</option>`;
+  }).join('');
+  const cur = state.inventory.find(r => r.code === s.skuCode);
+  const tierKey = TIER_KEY_BY_LABEL[s.priceTier] || 'custom';
+  const tierOpts = [
+    ['standard', `Standard — ${fmt(PRICE.standard)}`],
+    ['volume', `Volume (${VOLUME_MIN_QTY}+ paddles in one purchase) — ${fmt(PRICE.volume)}`],
+    ['ff', `Friends &amp; family — ${fmt(PRICE.ff)}`],
+    ['cost', `At landed cost: ${fmtPrecise(cur ? cur.landedCost : 0)}`],
+    ['custom', 'Custom amount'],
+  ].map(([k, t]) => `<option value="${k}" ${k === tierKey ? 'selected' : ''}>${t}</option>`).join('');
+  const priceLabel = tierKey === 'custom' ? 'Custom unit price (₱)' : (tierKey === 'cost' ? 'Unit price (₱) — at landed cost' : 'Unit price (₱) — set by tier');
+  const paid = s.paid == null ? 0 : s.paid;
+  return `
+        <div class="edit-form" id="editForm-${s.id}" style="display:none;">
+          <div class="field"><label>Paddle</label><select id="editSku-${s.id}">${paddleOpts}</select></div>
+          <div class="row2">
+            <div class="field"><label>Quantity</label><input type="number" min="1" id="editQty-${s.id}" value="${s.qty}"></div>
+            <div class="field">
+              <label>Price tier</label>
+              <select id="editTier-${s.id}">${tierOpts}</select>
+              <div class="hint" id="editTierHint-${s.id}" style="display:none;"></div>
+            </div>
+          </div>
+          <div class="field">
+            <label id="editPriceLabel-${s.id}">${priceLabel}</label>
+            <input type="number" min="0" step="any" id="editPrice-${s.id}" value="${s.unitPrice}" ${tierKey === 'custom' ? '' : 'readonly'}>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Customer</label><input type="text" id="editCustomer-${s.id}" value="${esc(s.customer)}"></div>
+            <div class="field"><label>Channel</label><input type="text" id="editChannel-${s.id}" value="${esc(s.channel)}"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Sold by</label><input type="text" id="editSoldby-${s.id}" value="${esc(s.soldBy)}"></div>
+            <div class="field">
+              <label>Payment status</label>
+              <select id="editStatus-${s.id}">
+                <option ${s.status==='Paid'?'selected':''}>Paid</option>
+                <option ${s.status==='Partial'?'selected':''}>Partial</option>
+                <option ${s.status==='Pending'?'selected':''}>Pending</option>
+              </select>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Amount paid so far (₱)</label><input type="number" min="0" step="any" id="editPaid-${s.id}" value="${paid}"></div>
+            <div class="field"><label>Sale total (₱)</label><input type="text" id="editTotal-${s.id}" value="${Number(s.total).toFixed(2)}" readonly></div>
+          </div>
+          <div class="delete-confirm">
+            <input type="password" class="pin-input" id="editSavePin-${s.id}" placeholder="PIN to confirm save" inputmode="numeric">
+            <button type="button" class="btn-edit-save" data-id="${s.id}">Save changes</button>
+            <button type="button" class="btn-cancel-text btn-edit-cancel" data-id="${s.id}">Cancel</button>
+            <div class="error" id="editSaveErr-${s.id}"></div>
+          </div>
+        </div>`;
+}
+
 function renderSalesLog(){
   const sales = [...state.sales]
     .sort((a,b)=> new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
@@ -729,33 +826,7 @@ function renderSalesLog(){
           <div class="error" id="editGateErr-${s.id}"></div>
         </div>
 
-        <div class="edit-form" id="editForm-${s.id}" style="display:none;">
-          <div class="row2">
-            <div class="field"><label>Quantity</label><input type="number" min="1" id="editQty-${s.id}" value="${s.qty}"></div>
-            <div class="field"><label>Unit price (₱)</label><input type="number" min="0" id="editPrice-${s.id}" value="${s.unitPrice}"></div>
-          </div>
-          <div class="row2">
-            <div class="field"><label>Customer</label><input type="text" id="editCustomer-${s.id}" value="${s.customer}"></div>
-            <div class="field"><label>Channel</label><input type="text" id="editChannel-${s.id}" value="${s.channel || ''}"></div>
-          </div>
-          <div class="row2">
-            <div class="field"><label>Sold by</label><input type="text" id="editSoldby-${s.id}" value="${s.soldBy}"></div>
-            <div class="field">
-              <label>Status</label>
-              <select id="editStatus-${s.id}">
-                <option ${s.status==='Paid'?'selected':''}>Paid</option>
-                <option ${s.status==='Partial'?'selected':''}>Partial</option>
-                <option ${s.status==='Pending'?'selected':''}>Pending</option>
-              </select>
-            </div>
-          </div>
-          <div class="delete-confirm">
-            <input type="password" class="pin-input" id="editSavePin-${s.id}" placeholder="PIN to confirm save" inputmode="numeric">
-            <button type="button" class="btn-edit-save" data-id="${s.id}">Save changes</button>
-            <button type="button" class="btn-cancel-text btn-edit-cancel" data-id="${s.id}">Cancel</button>
-            <div class="error" id="editSaveErr-${s.id}"></div>
-          </div>
-        </div>
+        ${editFormHtml(s)}
       </div>
       <div class="item-actions">
         <button type="button" class="btn-edit-trigger" data-id="${s.id}" title="Edit sale" aria-label="Edit sale">${EDIT_ICON}</button>
@@ -772,11 +843,19 @@ function renderHistory(){
   if(!rows.length) return `<h2>History</h2><div class="empty">No edits or deletions yet — they'll show here when someone changes a sale.</div>`;
   const items = rows.map(h=>{
     const verb = h.action === 'delete' ? 'Deleted' : 'Edited';
+    // For edits, list exactly what changed (old to new) from the before/after snapshots stored with the entry.
+    let changeLines = '';
+    if(h.action === 'edit' && h.previousValues && h.newValues){
+      changeLines = diffSale(h.previousValues, h.newValues).map(d =>
+        `<div style="color:var(--text-secondary);font-size:12.5px;margin-top:2px;">${esc(d.label)}: ${esc(d.from)} to ${esc(d.to)}</div>`
+      ).join('');
+    }
     return `
     <div class="activity-item">
       <div class="avatar">${initials(h.changedBy)}</div>
       <div class="activity-body">
         <div>${verb} sale — ${h.qty}x ${h.skuName} to ${h.customer} (${fmt(h.total)})</div>
+        ${changeLines}
         <div class="meta">${h.changedBy} · ${new Date(h.changedAt).toLocaleString()}</div>
       </div>
     </div>`;
@@ -784,7 +863,54 @@ function renderHistory(){
   return `<h2>History</h2><p class="section-desc">Edits and deletions to sales entries — who changed what, and when.</p><div class="tbl-scroll" style="padding:4px 16px;">${items}</div>`;
 }
 
+// Live behaviour for one sale's edit form. Opening the form never rewrites anything — values only
+// auto-fill when the user changes the tier, paddle, quantity, price, or sets the status to Paid.
+function wireEditForm(s){
+  const $ = (n)=>document.getElementById(n + '-' + s.id);
+  const skuSel = $('editSku'), qty = $('editQty'), tier = $('editTier'), price = $('editPrice'),
+        priceLabel = $('editPriceLabel'), hint = $('editTierHint'), status = $('editStatus'),
+        paid = $('editPaid'), total = $('editTotal');
+  if(!skuSel || !tier) return;
+  const rowFor = ()=> state.inventory.find(r => r.code === skuSel.value);
+
+  // Recomputes the displayed sale total; if the sale is marked Paid, amount paid always equals the total.
+  const syncTotal = (autofillPaid)=>{
+    const q = parseInt(qty.value, 10), p = parseFloat(price.value);
+    const t = (q > 0 && p > 0) ? round2(q * p) : 0;
+    total.value = t ? t.toFixed(2) : '';
+    if(autofillPaid && status.value === 'Paid' && t) paid.value = t;
+  };
+  // Fills the unit price for the chosen tier (custom keeps whatever price is there).
+  const fillPriceForTier = ()=>{
+    const k = tier.value, row = rowFor();
+    if(k === 'cost') price.value = row ? row.landedCost.toFixed(2) : '';
+    else if(k === 'standard' || k === 'volume' || k === 'ff') price.value = PRICE[k];
+  };
+  const refreshUi = (autofillPaid)=>{
+    const k = tier.value, row = rowFor();
+    const costOpt = tier.querySelector('option[value="cost"]');
+    if(costOpt && row) costOpt.textContent = `At landed cost: ${fmtPrecise(row.landedCost)}`;
+    price.readOnly = (k !== 'custom');
+    priceLabel.textContent = k === 'custom' ? 'Custom unit price (₱)' : (k === 'cost' ? 'Unit price (₱) — at landed cost' : 'Unit price (₱) — set by tier');
+    const q = parseInt(qty.value, 10);
+    if(q >= VOLUME_MIN_QTY && k === 'standard'){
+      hint.style.display = 'block';
+      hint.innerHTML = `${VOLUME_MIN_QTY}+ paddles in one purchase qualifies for Volume pricing (${fmt(PRICE.volume)}). <a href="#" id="editApplyVolume-${s.id}" style="color:var(--accent);font-weight:600;">Use Volume tier</a>`;
+      $('editApplyVolume').onclick = (ev)=>{ ev.preventDefault(); tier.value = 'volume'; fillPriceForTier(); refreshUi(true); };
+    } else { hint.style.display = 'none'; hint.innerHTML = ''; }
+    syncTotal(autofillPaid);
+  };
+
+  tier.onchange = ()=>{ fillPriceForTier(); refreshUi(true); };
+  skuSel.onchange = ()=>{ if(tier.value === 'cost') fillPriceForTier(); refreshUi(true); };
+  qty.oninput = ()=> refreshUi(true);
+  price.oninput = ()=> syncTotal(true);
+  status.onchange = ()=> syncTotal(true);   // choosing Paid fills amount paid with the total
+  refreshUi(false);
+}
+
 function attachHandlers(){
+  if(activeTab === 'salesLog') state.sales.forEach(wireEditForm);
   const priceSel = document.getElementById('f_price');
   if(priceSel){
     const skuSel = document.getElementById('f_sku');
@@ -921,37 +1047,65 @@ function attachHandlers(){
     };
   });
   document.querySelectorAll('.btn-edit-cancel').forEach(btn=>{
-    btn.onclick = ()=>{
-      const id = btn.dataset.id;
-      document.getElementById('editForm-' + id).style.display = 'none';
-      document.getElementById('view-' + id).style.display = 'block';
-    };
+    // Cancel discards any unsaved changes: re-render so the form reopens with the saved values.
+    btn.onclick = ()=> render();
   });
   document.querySelectorAll('.btn-edit-save').forEach(btn=>{
     btn.onclick = async ()=>{
       const id = btn.dataset.id;
       const errBox = document.getElementById('editSaveErr-' + id);
-      if(errBox) errBox.innerHTML = '';
+      const fail = (msg)=>{ errBox.innerHTML = `<div class="error">${msg}</div>`; };
+      errBox.innerHTML = '';
+      const sale = state.sales.find(x => String(x.id) === String(id));
+      if(!sale){ fail('This sale is no longer in the list — reload and try again.'); return; }
+
+      const skuCode = document.getElementById('editSku-' + id).value;
+      const row = state.inventory.find(r => r.code === skuCode);
       const qty = parseInt(document.getElementById('editQty-' + id).value, 10);
-      const unitPrice = parseFloat(document.getElementById('editPrice-' + id).value);
+      const tierKey = document.getElementById('editTier-' + id).value;
+      let unitPrice = round2(parseFloat(document.getElementById('editPrice-' + id).value));
       const customer = document.getElementById('editCustomer-' + id).value.trim();
       const channel = document.getElementById('editChannel-' + id).value.trim();
       const soldBy = document.getElementById('editSoldby-' + id).value.trim();
       const status = document.getElementById('editStatus-' + id).value;
+      const paidTyped = parseFloat(document.getElementById('editPaid-' + id).value || 0);
       const pin = document.getElementById('editSavePin-' + id).value;
-      if(!qty || qty < 1){ errBox.innerHTML = '<div class="error">Enter a valid quantity.</div>'; return; }
-      if(!unitPrice || unitPrice <= 0){ errBox.innerHTML = '<div class="error">Enter a valid price.</div>'; return; }
-      if(!customer){ errBox.innerHTML = '<div class="error">Enter the customer name.</div>'; return; }
-      if(!soldBy){ errBox.innerHTML = '<div class="error">Enter who sold it.</div>'; return; }
-      if(!pin){ errBox.innerHTML = '<div class="error">Enter the PIN.</div>'; return; }
-      btn.disabled = true;
+
+      if(!row){ fail('Choose a paddle.'); return; }
+      if(!qty || qty < 1){ fail('Enter a valid quantity.'); return; }
+      if(tierKey === 'cost') unitPrice = round2(row.landedCost);   // always the selected paddle's batch cost
+      if(!unitPrice || unitPrice <= 0){ fail('Enter a valid price.'); return; }
+      if(!customer){ fail('Enter the customer name.'); return; }
+      if(!soldBy){ fail('Enter who sold it.'); return; }
+      // Stock: the sale's own current units count as available, so keeping or swapping the paddle both work.
+      const avail = editAvailable(row, sale);
+      if(qty > avail){ fail(`Only ${avail} left in stock for this paddle.`); return; }
+
       const total = round2(qty * unitPrice);
-      const ok = await updateSale(id, {
-        qty, unit_price: unitPrice, total, customer, channel, sold_by: soldBy, status
-      }, pin);
+      // A sale marked Paid always records its full total as paid; otherwise it can't exceed the total.
+      const amountPaid = status === 'Paid' ? total : Math.max(0, Math.min(round2(paidTyped || 0), total));
+
+      // A sale saved before price tiers existed has no tier. Leave it blank unless the tier or price was changed.
+      let tierLabel = TIER_LABELS[tierKey];
+      if(!sale.priceTier && tierKey === 'custom' && unitPrice === round2(sale.unitPrice)) tierLabel = '';
+
+      const next = {...sale, skuCode, skuName: row.name, qty, unitPrice, total, customer, channel, soldBy, status,
+                    paid: amountPaid, priceTier: tierLabel};
+      const diffs = diffSale(sale, next);
+      if(!diffs.length){ fail('No changes to save.'); return; }
+      if(!pin){ fail('Enter the PIN.'); return; }
+
+      const changes = {
+        sku_code: skuCode, paddle_name: row.name, qty, unit_price: unitPrice, total, customer, channel,
+        sold_by: soldBy, status, amount_paid: amountPaid
+      };
+      if(tierLabel !== '' || sale.priceTier) changes.price_tier = tierLabel || null;   // untouched tier-less sale stays untouched
+
+      btn.disabled = true;
+      const res = await updateSale(id, changes, pin);
       btn.disabled = false;
-      if(!ok){
-        errBox.innerHTML = '<div class="error">Incorrect PIN.</div>';
+      if(!res.ok){
+        fail(res.reason === 'pin' ? 'Incorrect PIN.' : describeSubmitError(res.error, 'save the changes'));
         return;
       }
       showToast('Sale updated');
