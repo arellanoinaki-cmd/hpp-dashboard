@@ -99,6 +99,17 @@
   .badge.paid{background:var(--green-tint);color:var(--green);}
   .badge.partial{background:var(--amber-tint);color:var(--amber);}
   .badge.pending{background:var(--red-tint);color:var(--red);}
+  .badge.demo{background:var(--accent-tint);color:var(--accent);}
+  .badge.batch{background:var(--input-bg);color:var(--text-secondary);}
+  .batch-head td{background:var(--input-bg);white-space:normal;padding:12px 14px;}
+  .inv-table td:first-child{white-space:normal;min-width:150px;}   /* paddle name + badges wrap instead of forcing a wide table */
+  .batch-head .bh-title{font-weight:700;font-size:13.5px;}
+  .batch-head .bh-sub{color:var(--text-secondary);font-size:12px;margin-top:3px;}
+  .search-wrap{position:relative;margin:0 0 12px;}
+  .search-wrap input{font-size:16px;padding-right:42px;}  /* 16px+ so Safari on iPhone doesn't zoom in */
+  .search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:30px;height:30px;border:none;border-radius:50%;background:transparent;color:var(--text-tertiary);cursor:pointer;font-size:22px;line-height:1;font-family:inherit;}
+  .search-clear:hover{background:var(--accent-tint);color:var(--accent);}
+  .search-summary{font-size:13px;color:var(--text-secondary);margin:0 0 12px;}
   form{background:var(--card-bg);border:var(--card-border);box-shadow:var(--card-shadow);border-radius:var(--radius-lg);padding:1.75rem;transition:background-color .3s var(--ease),box-shadow .3s var(--ease);}
   .field{margin-bottom:18px;}
   .field label{display:block;font-size:13px;font-weight:600;margin-bottom:7px;}
@@ -146,6 +157,13 @@
   .payout-card .role{color:var(--text-secondary);font-size:12.5px;margin-bottom:12px;}
   .payout-card .amt{font-size:26px;font-weight:800;letter-spacing:-.02em;color:var(--accent);text-shadow:var(--accent-glow);font-variant-numeric:tabular-nums;}
   @media (max-width:600px){.row2{grid-template-columns:1fr;}}
+  /* iOS Safari zooms the whole page when a field smaller than 16px is tapped. On touch devices and small screens
+     every form field is 16px; wide desktop screens keep the compact 14px. */
+  @media (pointer:coarse), (max-width:820px){
+    input, select, textarea{font-size:16px;}
+    .who select{font-size:16px;}
+    .delete-confirm .pin-input{font-size:16px;}
+  }
 </style>
 </head>
 <body>
@@ -173,15 +191,46 @@
 
 <script src="https://unpkg.com/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script>
+// =====================================================================================================
+//  INVENTORY QUANTITIES  —  the ONLY numbers you need to edit when shipments arrive
+// =====================================================================================================
+//  ordered  = quantity on the purchase order
+//  received = quantity that has ACTUALLY ARRIVED   <-- change this when a shipment lands
+//  demo     = permanent demo units kept in the shop, NOT for sale (they stay counted in "received")
+//  Everything on screen (Overview, Inventory, Log a sale, Edit) is calculated from these numbers.
+//  A paddle whose received is below ordered is listed under "On the way" and can't be sold yet.
+//  Partly arrived? Enter the number that has arrived (e.g. received:3) — the rest stays "On the way".
+const QTY = {
+  // ---- Batch 1 · #HPC102340 — all 100 received ----
+  "J6CR-WHT":         {ordered:30, received:30, demo:2},
+  "J6CR-BLU":         {ordered:30, received:30, demo:1},
+  "J3CR-BLU":         {ordered:5,  received:5,  demo:1},
+  "J3CR-WHT":         {ordered:5,  received:5,  demo:2},
+  "J2CR-BLU-EXT":     {ordered:3,  received:3,  demo:0},
+  "J2CR-WHT-EXT":     {ordered:3,  received:3,  demo:1},
+  "J2CR-BLU-ORIG":    {ordered:12, received:12, demo:1},
+  "J2CR-WHT-ORIG":    {ordered:12, received:12, demo:1},
+  // ---- Batch 2 · #HPC107629 — 46 of 100 received so far ----
+  "J2CR-WHT-ORIG-B2": {ordered:20, received:20, demo:0},
+  "J2CR-BLU-ORIG-B2": {ordered:21, received:21, demo:0},
+  "J2CR-WHT-EXT-B2":  {ordered:7,  received:0,  demo:0},   // <-- NOT YET RECEIVED: set received to 7 when it arrives
+  "J2CR-BLU-EXT-B2":  {ordered:7,  received:0,  demo:0},   // <-- NOT YET RECEIVED: set received to 7 when it arrives
+  "J3CR-WHT-B2":      {ordered:3,  received:3,  demo:0},
+  "J3CR-BLU-B2":      {ordered:2,  received:2,  demo:0},
+  "J6CR-BLU-B2":      {ordered:20, received:0,  demo:0},   // <-- NOT YET RECEIVED: set received to 20 when it arrives
+  "J6CR-WHT-B2":      {ordered:20, received:0,  demo:0},   // <-- NOT YET RECEIVED: set received to 20 when it arrives
+};
+// Shipment details shown under "On the way", by batch number. Remove a line once that batch has fully arrived.
+const SHIPMENTS = { 2: "SF Express SF1578906060809" };
+// =====================================================================================================
+
 const SUPABASE_URL = "https://kjutwwgrrslgyvrskprk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_WQZ28cxIrxAKRdn8CWUQ5Q_5H4XOYMR";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy / Javi Cojuangco"];
-// INVENTORY DATA — the numbers to edit as things change:
-//   ordered  = quantity on the purchase order
-//   received = quantity that has actually arrived (update this as shipments land)
-//   demo     = units kept as permanent demo paddles, NOT for sale (default 0)
+// INVENTORY ROWS — one per paddle per batch. Quantities (ordered / received / demo) are NOT here:
+// they live in the QTY block at the very top of this script.
 //   batch    = 1, 2, ... — sales use the lowest batch that still has sellable stock first
 //   group    = the same physical paddle across batches (a new batch's rows reuse the group of the matching older row)
 //   Available to sell = received - demo - sold
@@ -189,27 +238,36 @@ const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy / Javi Cojuangc
 // freight is never deducted again anywhere.
 const SKUS = [
   // Batch 1 — Order #HPC102340. All 100 received. Landed cost: 727,288.49 net / 91 sellable = 7,992.18.
-  // 9 of the 100 are permanent demo units (not for sale), recorded in `demo` below. They stay in `received`
+  // 9 of the 100 are permanent demo units (not for sale), recorded in the QTY block at the top. They stay in `received`
   // but are excluded from Available to sell.
-  {code:"J6CR-WHT", batch:1, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", ordered:30, received:30, demo:2, landedCost:7992.18, order:"HPC102340"},
-  {code:"J6CR-BLU", batch:1, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:30, received:30, demo:1, landedCost:7992.18, order:"HPC102340"},
-  {code:"J3CR-BLU", batch:1, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:5, received:5, demo:1, landedCost:7992.18, order:"HPC102340"},
-  {code:"J3CR-WHT", batch:1, group:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", ordered:5, received:5, demo:2, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-BLU-EXT", batch:1, group:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended)", ordered:3, received:3, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-WHT-EXT", batch:1, group:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended)", ordered:3, received:3, demo:1, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-BLU-ORIG", batch:1, group:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR", ordered:12, received:12, demo:1, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-WHT-ORIG", batch:1, group:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR", ordered:12, received:12, demo:1, landedCost:7992.18, order:"HPC102340"},
+  {code:"J6CR-WHT", batch:1, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", landedCost:7992.18, order:"HPC102340"},
+  {code:"J6CR-BLU", batch:1, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", landedCost:7992.18, order:"HPC102340"},
+  {code:"J3CR-BLU", batch:1, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", landedCost:7992.18, order:"HPC102340"},
+  {code:"J3CR-WHT", batch:1, group:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-BLU-EXT", batch:1, group:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended)", landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-WHT-EXT", batch:1, group:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended)", landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-BLU-ORIG", batch:1, group:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR", landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-WHT-ORIG", batch:1, group:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR", landedCost:7992.18, order:"HPC102340"},
   // Batch 2 — Order #HPC107629. Only 46 of 100 have arrived. Landed cost is PROVISIONAL
   // (749,265.51 so far / 100 = 7,492.66) until the last 54 paddles arrive and freight is billed.
-  {code:"J2CR-WHT-ORIG-B2", batch:2, group:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR (5.5\" handle)", ordered:20, received:20, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J2CR-BLU-ORIG-B2", batch:2, group:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR (5.5\" handle)", ordered:21, received:21, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J2CR-WHT-EXT-B2", batch:2, group:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J2CR-BLU-EXT-B2", batch:2, group:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J3CR-WHT-B2", batch:2, group:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", ordered:3, received:3, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J3CR-BLU-B2", batch:2, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:2, received:2, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J6CR-BLU-B2", batch:2, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J6CR-WHT-B2", batch:2, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-WHT-ORIG-B2", batch:2, group:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR (5.5\" handle)", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-BLU-ORIG-B2", batch:2, group:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR (5.5\" handle)", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-WHT-EXT-B2", batch:2, group:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended, 6\" handle)", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-BLU-EXT-B2", batch:2, group:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended, 6\" handle)", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J3CR-WHT-B2", batch:2, group:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J3CR-BLU-B2", batch:2, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J6CR-BLU-B2", batch:2, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J6CR-WHT-B2", batch:2, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", landedCost:7492.66, order:"HPC107629", provisional:true},
 ];
+// Merge the quantities from the QTY block (top of this script) into each inventory row.
+SKUS.forEach(s => {
+  const q = QTY[s.code];
+  if(!q) console.warn('Inventory: no quantities in QTY for', s.code);
+  Object.assign(s, {ordered:0, received:0, demo:0}, q || {});
+  if(s.received > s.ordered) console.warn('Inventory: received is more than ordered for', s.code);
+  if(s.demo > s.received) console.warn('Inventory: demo is more than received for', s.code);
+});
+
 // Price tiers on Log a sale. "cost" (At landed cost) and "custom" have no fixed price here:
 // cost reads the selected paddle's landed cost; custom is typed in.
 const PRICE = {standard:12500, volume:11500, ff:11500};
@@ -222,6 +280,7 @@ const AMB_TIERS = [{min:1,max:5,rate:500},{min:6,max:10,rate:650},{min:11,max:In
 let state = {inventory: SKUS.map(s=>({...s, sold:0})), sales: [], history: []};
 let currentUser = null;
 let activeTab = "overview";
+let salesSearch = '';   // what is typed in the Sales search box (kept when the list re-renders)
 
 // Explicit column list used for every select() against `sales` — anywhere a
 // row comes back to the client (initial load, or the row returned by an
@@ -247,6 +306,15 @@ function esc(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace
 const GROUPS = [...new Set(SKUS.map(s => s.group))];
 function groupName(g){ const r = SKUS.find(x => x.group === g); return r ? r.name : g; }
 function groupOfCode(code){ const r = SKUS.find(x => x.code === code); return r ? r.group : code; }
+// Plain-language paddle name built from the data: "J2CR White Extended", "J2CR Blue Original", "J6CR White".
+function plainName(r){
+  const model = r.code.split('-')[0];
+  const variant = r.code.includes('-EXT') ? ' Extended' : (r.code.includes('-ORIG') ? ' Original' : '');
+  return `${model} ${r.color}${variant}`;
+}
+function batchNumbers(){ return [...new Set(SKUS.map(x => x.batch))].sort((a,b) => a - b); }
+// Lower-cases and strips accents so a search for "tina" finds "Tiña".
+function normText(v){ return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 // Rows of a group that have actually arrived, oldest batch first.
 function groupRows(g){ return state.inventory.filter(r => r.group === g && r.received > 0).sort((a,b) => a.batch - b.batch); }
 // Sellable units in one row. `credit` ({rowCode: units}) adds back units an edited sale already holds.
@@ -569,6 +637,8 @@ function computeTotals(){
   const totalSold = state.sales.reduce((a,s)=>a+s.qty,0);
   // Available to sell excludes permanent demo units.
   const totalAvailable = totalReceived - totalDemo - totalSold;
+  // Ordered but not yet arrived.
+  const totalOnTheWay = state.inventory.reduce((a,s)=>a+Math.max(0, s.ordered - s.received),0);
   const totalRevenue = state.sales.reduce((a,s)=>a+s.total,0);
   const totalOutstanding = state.sales.reduce((a,s)=>a+Math.max(0,s.total - s.paid),0);
   const totalCOGS = state.sales.reduce((a,s)=>{
@@ -596,7 +666,7 @@ function computeTotals(){
   const netProfit = totalRevenue - totalCOGS - totalCommission;
   const perPartner = netProfit / 3;
 
-  return {totalReceived, totalDemo, totalSold, totalAvailable, totalRevenue, totalOutstanding, totalCOGS, totalCommission, netProfit, perPartner, soldByPartner, ambassadorSales};
+  return {totalReceived, totalDemo, totalOnTheWay, totalSold, totalAvailable, totalRevenue, totalOutstanding, totalCOGS, totalCommission, netProfit, perPartner, soldByPartner, ambassadorSales};
 }
 
 function render(){
@@ -608,7 +678,6 @@ function render(){
     if(activeTab === 'overview') main.innerHTML = renderOverview();
     else if(activeTab === 'inventory') main.innerHTML = renderInventory();
     else if(activeTab === 'sale') main.innerHTML = renderSaleForm();
-    else if(activeTab === 'payouts') main.innerHTML = renderPayouts();
     else if(activeTab === 'salesLog') main.innerHTML = renderSalesLog();
     else if(activeTab === 'history') main.innerHTML = renderHistory();
     attachHandlers();
@@ -619,7 +688,7 @@ function render(){
 function renderNav(){
   const tabs = [
     ['overview','Overview'], ['inventory','Inventory'], ['sale','Log a sale'],
-    ['payouts','Payouts'], ['salesLog','Sales'], ['history','History']
+    ['salesLog','Sales'], ['history','History']
   ];
   document.getElementById('tabs').innerHTML = tabs.map(([key,label])=>
     `<button data-tab="${key}" class="${activeTab===key?'active':''}">${label}</button>`
@@ -649,7 +718,13 @@ function renderOverview(){
       <div class="card"><div class="label">Revenue</div><div class="value green">${fmt(t.totalRevenue)}</div></div>
       <div class="card"><div class="label">Outstanding balance</div><div class="value ${t.totalOutstanding>0?'red':''}">${fmt(t.totalOutstanding)}</div></div>
       <div class="card"><div class="label">Net profit (est.)</div><div class="value blue">${fmt(t.netProfit)}</div></div>
+      <div class="card"><div class="label">Demo units</div><div class="value">${t.totalDemo}</div></div>
+      <div class="card"><div class="label">On the way</div><div class="value">${t.totalOnTheWay}</div></div>
     </div>
+    <hr class="kitchen-line">
+    <h2>Payouts</h2>
+    <p class="section-desc">Equal three-way split of net profit</p>
+    ${payoutBlocks(t)}
     <hr class="kitchen-line">
     <h2>Sold by partner</h2>
     <p class="section-desc">Units personally sold this cycle — equity split stays equal regardless of who sells.</p>
@@ -667,31 +742,90 @@ function renderOverview(){
 }
 
 function renderInventory(){
-  const rows = state.inventory.map(s=>{
-    const available = availableQty(s);
-    const status = stockStatus(s);
-    return `<tr>
-      <td>${s.name}</td>
-      <td>${s.model}</td>
-      <td>${s.color}</td>
-      <td>#${s.order}</td>
-      <td>${s.ordered}</td>
-      <td>${s.received}</td>
-      <td>${s.demo || 0}</td>
-      <td>${s.sold}</td>
-      <td>${available}</td>
-      <td><span class="badge ${status.cls}">${status.label}</span></td>
-      <td>${fmtPrecise(s.landedCost)}${s.provisional ? ' <span class="badge low">PROVISIONAL</span>' : ''}</td>
-    </tr>`;
+  const t = computeTotals();
+
+  // Summary strip — every number comes from the quantities in the QTY block and the sales log.
+  const strip = `
+    <div class="grid" style="margin-bottom:1.25rem;">
+      <div class="card"><div class="label">Received</div><div class="value">${t.totalReceived}</div></div>
+      <div class="card"><div class="label">Demo</div><div class="value">${t.totalDemo}</div></div>
+      <div class="card"><div class="label">Available to sell</div><div class="value ${t.totalAvailable<=10?'amber':''}">${t.totalAvailable}</div></div>
+      <div class="card"><div class="label">On the way</div><div class="value">${t.totalOnTheWay}</div></div>
+      <div class="card"><div class="label">Sold</div><div class="value blue">${t.totalSold}</div></div>
+    </div>`;
+
+  // Demo note — the total and the per-paddle breakdown are both calculated from the demo quantities.
+  const demoByPaddle = GROUPS.map(g => {
+    const rows = state.inventory.filter(r => r.group === g);
+    return {name: rows.length ? plainName(rows[0]) : g, qty: rows.reduce((a, r) => a + (r.demo || 0), 0)};
+  }).filter(d => d.qty > 0);
+  const demoNote = t.totalDemo > 0 ? `
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div style="font-weight:700;font-size:14px;">${t.totalDemo} demo paddle${t.totalDemo === 1 ? '' : 's'}: permanent demo unit${t.totalDemo === 1 ? '' : 's'}, not for sale</div>
+      <div class="label" style="margin:6px 0 0;">${demoByPaddle.map(d => `${d.name} ${d.qty}`).join(' · ')}</div>
+    </div>` : '';
+
+  // One group per batch: a header (received / on the way / landed cost) and the paddles that have arrived.
+  const batchGroups = batchNumbers().map(n => {
+    const br = state.inventory.filter(r => r.batch === n);
+    const ordered = br.reduce((a, r) => a + r.ordered, 0);
+    const received = br.reduce((a, r) => a + r.received, 0);
+    const onWay = br.reduce((a, r) => a + Math.max(0, r.ordered - r.received), 0);
+    const first = br[0];
+    const head = `<tr class="batch-head"><td colspan="7">
+        <div class="bh-title">Batch ${n} · #${first.order}</div>
+        <div class="bh-sub">${received} of ${ordered} received${onWay > 0 ? ` · ${onWay} on the way` : ''} · Landed cost ${fmtPrecise(first.landedCost)}${first.provisional ? ' <span class="badge low">PROVISIONAL</span>' : ''}</div>
+      </td></tr>`;
+    const arrived = br.filter(r => r.received > 0);
+    const body = arrived.length ? arrived.map(r => {
+      const status = stockStatus(r);
+      return `<tr>
+        <td>${plainName(r)} <span class="badge batch">Batch ${r.batch}</span>${r.demo > 0 ? ` <span class="badge demo">${r.demo} demo</span>` : ''}</td>
+        <td>${r.ordered}</td>
+        <td>${r.received}</td>
+        <td>${r.demo || 0}</td>
+        <td>${r.sold}</td>
+        <td>${availableQty(r)}</td>
+        <td><span class="badge ${status.cls}">${status.label}</span></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="7" style="color:var(--text-tertiary);">Nothing from this batch has arrived yet.</td></tr>`;
+    return `<tbody>${head}${body}</tbody>`;
   }).join('');
+
+  // Everything with received below ordered. Not sellable until its received number is raised in the QTY block.
+  const pending = state.inventory.filter(r => r.received < r.ordered);
+  let onTheWay = '';
+  if(pending.length){
+    const pendingBatches = [...new Set(pending.map(r => r.batch))].filter(b => SHIPMENTS[b]);
+    const shipLines = pendingBatches.map(b => `${pendingBatches.length > 1 ? `Batch ${b} · ` : ''}Shipment: ${esc(SHIPMENTS[b])}`);
+    onTheWay = `
+      <hr class="kitchen-line">
+      <h2>On the way (not yet received)</h2>
+      ${shipLines.length ? `<p class="section-desc">${shipLines.join('<br>')}</p>` : ''}
+      <div class="tbl-scroll">
+        <table class="inv-table">
+          <thead><tr><th>Paddle</th><th>Batch</th><th>On the way</th><th>Status</th></tr></thead>
+          <tbody>${pending.map(r => `<tr>
+            <td>${plainName(r)}</td>
+            <td>Batch ${r.batch} · #${r.order}</td>
+            <td>${r.ordered - r.received}</td>
+            <td><span class="badge low">Expected</span></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  }
+
   return `
     <h2>Inventory</h2>
+    ${strip}
+    ${demoNote}
     <div class="tbl-scroll">
-      <table>
-        <thead><tr><th>Paddle</th><th>Model</th><th>Color</th><th>Order #</th><th>Ordered</th><th>Received</th><th>Demo (not for sale)</th><th>Sold</th><th>Available to sell</th><th>Status</th><th>Landed cost</th></tr></thead>
-        <tbody>${rows}</tbody>
+      <table class="inv-table">
+        <thead><tr><th>Paddle</th><th>Ordered</th><th>Received</th><th>Demo</th><th>Sold</th><th>Available</th><th>Status</th></tr></thead>
+        ${batchGroups}
       </table>
     </div>
+    ${onTheWay}
   `;
 }
 
@@ -710,7 +844,7 @@ function renderSaleForm(){
   const soldByOptions = PARTNERS.map(p=>`<option value="${p}" ${currentUser===p?'selected':''}>${p} (partner)</option>`).join('');
   return `
     <h2>Log a sale</h2>
-    <p class="section-desc">Fills into the shared sales log instantly — everyone sees it on Overview and Payouts.</p>
+    <p class="section-desc">Fills into the shared sales log instantly — everyone sees it on Overview.</p>
     <form id="saleForm">
       <div class="field">
         <label>Paddle</label>
@@ -786,8 +920,8 @@ function renderSaleForm(){
   `;
 }
 
-function renderPayouts(){
-  const t = computeTotals();
+// The payout summary cards + the three partner cards, shown on the Overview.
+function payoutBlocks(t){
   const role = "Partner";
   const cards = PARTNERS.map(p=>{
     if(p === "Juancho Sy / Javi Cojuangco"){
@@ -806,8 +940,6 @@ function renderPayouts(){
     </div>`;
   }).join('');
   return `
-    <h2>Payouts</h2>
-    <p class="section-desc">Equal three-way split after landed cost and ambassador commissions — per the JV Agreement, Section 5 & 7.</p>
     <div class="grid" style="margin-bottom:1.5rem;">
       <div class="card"><div class="label">Revenue</div><div class="value">${fmt(t.totalRevenue)}</div></div>
       <div class="card"><div class="label">Cost of goods sold</div><div class="value">${fmt(t.totalCOGS)}</div></div>
@@ -815,8 +947,7 @@ function renderPayouts(){
       <div class="card"><div class="label">Net profit</div><div class="value green">${fmt(t.netProfit)}</div></div>
     </div>
     <hr class="kitchen-line">
-    ${cards}
-  `;
+    ${cards}`;
 }
 
 // The edit form mirrors Log a sale: paddle, price tier (auto-filling the unit price), and payment —
@@ -888,12 +1019,17 @@ function renderSalesLog(){
   const sales = [...state.sales]
     .sort((a,b)=> new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
   if(!sales.length) return `<h2>Sales</h2><div class="empty">No sales yet — logged sales will show here.</div>`;
-  const items = sales.map(s=>`
-    <div class="activity-item">
+  const items = sales.map((s, i)=>{
+    const invRow = state.inventory.find(r => r.code === s.skuCode);
+    // Pre-computed, accent-free, lower-case text the live search matches against (customer is also kept on its own to rank first).
+    const custText = normText(s.customer);
+    const allText = normText([s.customer, s.skuName, invRow ? plainName(invRow) : '', s.skuCode, s.soldBy, s.channel].join(' '));
+    return `
+    <div class="activity-item" data-i="${i}" data-sid="${s.id}" data-cust="${esc(custText)}" data-hay="${esc(allText)}">
       <div class="avatar">${initials(s.soldBy)}</div>
       <div class="activity-body">
         <div class="activity-view" id="view-${s.id}">
-          <div>${s.qty}x ${s.skuName} to ${s.customer} (${fmt(s.total)}${s.priceTier ? ' · ' + s.priceTier : ''})</div>
+          <div>${s.qty}x ${s.skuName} to ${s.customer} (${fmt(s.total)}${s.priceTier ? ' · ' + s.priceTier : ''})${invRow ? ` <span class="badge batch">Batch ${invRow.batch}</span>` : ''}</div>
           <div class="meta">${s.soldBy} · ${new Date(s.createdAt || s.date).toLocaleString()}</div>
         </div>
 
@@ -918,8 +1054,50 @@ function renderSalesLog(){
         <button type="button" class="btn-delete-trigger" data-id="${s.id}" title="Delete sale" aria-label="Delete sale">${TRASH_ICON}</button>
       </div>
     </div>
-  `).join('');
-  return `<h2>Sales</h2><p class="section-desc">Live log of sales as they're recorded.</p><div class="tbl-scroll" style="padding:4px 16px;">${items}</div>`;
+  `;}).join('');
+  return `<h2>Sales</h2><p class="section-desc">Live log of sales as they're recorded.</p>
+    <div class="search-wrap">
+      <input type="text" id="salesSearch" value="${esc(salesSearch)}" placeholder="Search customer, paddle, seller or channel" aria-label="Search sales"
+        autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="search" enterkeyhint="search">
+      <button type="button" class="search-clear" id="salesSearchClear" aria-label="Clear search" style="display:none;">×</button>
+    </div>
+    <div class="search-summary" id="salesSearchSummary" style="display:none;"></div>
+    <div class="empty" id="salesNoResults" style="display:none;">No sales found</div>
+    <div class="tbl-scroll" id="salesList" style="padding:4px 16px;">${items}</div>`;
+}
+
+// Live search on the Sales tab. Hides/shows the rows already on the page (so edit and delete keep working on
+// filtered results). Case- and accent-insensitive, partial matches; every word typed must match. Rows whose
+// customer matches come first, then rows that only match on paddle, seller or channel.
+function applySalesFilter(){
+  const input = document.getElementById('salesSearch'), list = document.getElementById('salesList');
+  if(!input || !list) return;
+  const tokens = normText(salesSearch).trim().split(/\s+/).filter(Boolean);
+  const searching = tokens.length > 0;
+  const items = [...list.children].filter(el => el.classList.contains('activity-item'));
+  const byId = Object.fromEntries(state.sales.map(x => [String(x.id), x]));
+  const shown = [];
+  items.forEach(el => {
+    const hit = !searching || tokens.every(tk => el.dataset.hay.includes(tk));
+    el.style.display = hit ? '' : 'none';
+    if(hit) shown.push({el, custFirst: searching && tokens.every(tk => el.dataset.cust.includes(tk)), i: +el.dataset.i});
+  });
+  shown.sort((a, b) => (b.custFirst - a.custFirst) || (a.i - b.i));            // customer matches first, then the usual newest-first order
+  const frag = document.createDocumentFragment();
+  shown.forEach(x => frag.appendChild(x.el));
+  items.filter(el => el.style.display === 'none').forEach(el => frag.appendChild(el));
+  list.appendChild(frag);
+  items.forEach(el => { el.style.borderBottom = ''; });
+  if(shown.length) shown[shown.length - 1].el.style.borderBottom = 'none';      // no divider under the last visible row
+
+  let qty = 0, total = 0;
+  shown.forEach(x => { const sale = byId[x.el.dataset.sid]; if(sale){ qty += +sale.qty || 0; total += +sale.total || 0; } });
+  const summary = document.getElementById('salesSearchSummary');
+  summary.style.display = searching ? 'block' : 'none';
+  summary.textContent = searching ? `${shown.length} sale${shown.length === 1 ? '' : 's'} found · ${qty} paddle${qty === 1 ? '' : 's'} · ${fmt(total)}` : '';
+  document.getElementById('salesNoResults').style.display = (searching && !shown.length) ? 'block' : 'none';
+  list.style.display = (searching && !shown.length) ? 'none' : '';
+  document.getElementById('salesSearchClear').style.display = input.value ? 'block' : 'none';
 }
 
 function renderHistory(){
@@ -1013,6 +1191,13 @@ function wireEditForm(s){
 
 function attachHandlers(){
   if(activeTab === 'salesLog') state.sales.forEach(wireEditForm);
+  const searchBox = document.getElementById('salesSearch');
+  if(searchBox){
+    searchBox.oninput = ()=>{ salesSearch = searchBox.value; applySalesFilter(); };
+    searchBox.onkeydown = (ev)=>{ if(ev.key === 'Escape'){ salesSearch = ''; searchBox.value = ''; applySalesFilter(); } };
+    document.getElementById('salesSearchClear').onclick = ()=>{ salesSearch = ''; searchBox.value = ''; applySalesFilter(); searchBox.focus(); };
+    applySalesFilter();   // re-applies whatever is typed after any re-render (e.g. after saving an edit)
+  }
   const priceSel = document.getElementById('f_price');
   if(priceSel){
     const skuSel = document.getElementById('f_sku');
