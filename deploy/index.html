@@ -182,30 +182,33 @@ const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy / Javi Cojuangc
 //   ordered  = quantity on the purchase order
 //   received = quantity that has actually arrived (update this as shipments land)
 //   demo     = units kept as permanent demo paddles, NOT for sale (default 0)
+//   batch    = 1, 2, ... — sales use the lowest batch that still has sellable stock first
+//   group    = the same physical paddle across batches (a new batch's rows reuse the group of the matching older row)
 //   Available to sell = received - demo - sold
 // landedCost already includes freight (and, for Batch 1, absorbed demo cost), so
 // freight is never deducted again anywhere.
 const SKUS = [
   // Batch 1 — Order #HPC102340. All 100 received. Landed cost: 727,288.49 net / 91 sellable = 7,992.18.
-  // 9 of the 100 are permanent demo units — set `demo` on the rows that hold them.
-  {code:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", ordered:30, received:30, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:30, received:30, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:5, received:5, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", ordered:5, received:5, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended)", ordered:3, received:3, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended)", ordered:3, received:3, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR", ordered:12, received:12, demo:0, landedCost:7992.18, order:"HPC102340"},
-  {code:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR", ordered:12, received:12, demo:0, landedCost:7992.18, order:"HPC102340"},
+  // 9 of the 100 are permanent demo units (not for sale), recorded in `demo` below. They stay in `received`
+  // but are excluded from Available to sell.
+  {code:"J6CR-WHT", batch:1, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", ordered:30, received:30, demo:2, landedCost:7992.18, order:"HPC102340"},
+  {code:"J6CR-BLU", batch:1, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:30, received:30, demo:1, landedCost:7992.18, order:"HPC102340"},
+  {code:"J3CR-BLU", batch:1, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:5, received:5, demo:1, landedCost:7992.18, order:"HPC102340"},
+  {code:"J3CR-WHT", batch:1, group:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", ordered:5, received:5, demo:2, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-BLU-EXT", batch:1, group:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended)", ordered:3, received:3, demo:0, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-WHT-EXT", batch:1, group:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended)", ordered:3, received:3, demo:1, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-BLU-ORIG", batch:1, group:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR", ordered:12, received:12, demo:1, landedCost:7992.18, order:"HPC102340"},
+  {code:"J2CR-WHT-ORIG", batch:1, group:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR", ordered:12, received:12, demo:1, landedCost:7992.18, order:"HPC102340"},
   // Batch 2 — Order #HPC107629. Only 46 of 100 have arrived. Landed cost is PROVISIONAL
   // (749,265.51 so far / 100 = 7,492.66) until the last 54 paddles arrive and freight is billed.
-  {code:"J2CR-WHT-ORIG-B2", name:"J2CR — White", color:"White", model:"J2CR (5.5\" handle)", ordered:20, received:20, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J2CR-BLU-ORIG-B2", name:"J2CR — Blue", color:"Blue", model:"J2CR (5.5\" handle)", ordered:21, received:21, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J2CR-WHT-EXT-B2", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J2CR-BLU-EXT-B2", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J3CR-WHT-B2", name:"J3CR — White", color:"White", model:"J3CR", ordered:3, received:3, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J3CR-BLU-B2", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:2, received:2, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J6CR-BLU-B2", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
-  {code:"J6CR-WHT-B2", name:"J6CR — White", color:"White", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-WHT-ORIG-B2", batch:2, group:"J2CR-WHT-ORIG", name:"J2CR — White", color:"White", model:"J2CR (5.5\" handle)", ordered:20, received:20, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-BLU-ORIG-B2", batch:2, group:"J2CR-BLU-ORIG", name:"J2CR — Blue", color:"Blue", model:"J2CR (5.5\" handle)", ordered:21, received:21, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-WHT-EXT-B2", batch:2, group:"J2CR-WHT-EXT", name:"J2CR Ext — White", color:"White", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J2CR-BLU-EXT-B2", batch:2, group:"J2CR-BLU-EXT", name:"J2CR Ext — Blue", color:"Blue", model:"J2CR (Extended, 6\" handle)", ordered:7, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J3CR-WHT-B2", batch:2, group:"J3CR-WHT", name:"J3CR — White", color:"White", model:"J3CR", ordered:3, received:3, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J3CR-BLU-B2", batch:2, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", ordered:2, received:2, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J6CR-BLU-B2", batch:2, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
+  {code:"J6CR-WHT-B2", batch:2, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", ordered:20, received:0, demo:0, landedCost:7492.66, order:"HPC107629", provisional:true},
 ];
 // Price tiers on Log a sale. "cost" (At landed cost) and "custom" have no fixed price here:
 // cost reads the selected paddle's landed cost; custom is typed in.
@@ -236,8 +239,57 @@ function round2(n){ return Math.round(n * 100) / 100; }
 function fmtMoney(n){ return Number.isInteger(+n) ? fmt(n) : fmtPrecise(n); }
 // Escapes text going into an HTML attribute/element so a name with quotes or < can't break the form.
 function esc(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-// When editing a sale, its own units count as available again for its current paddle (so you can keep or swap it).
-function editAvailable(row, sale){ return availableQty(row) + (row.code === sale.skuCode ? sale.qty : 0); }
+// ---- First-batch-first allocation ----------------------------------------------------------------
+// A "group" is one physical paddle (model + color + handle) that may exist in several batches.
+// Partners pick a group; the app assigns each sale to the OLDEST RECEIVED batch that still has
+// sellable stock (demo units and not-yet-received paddles are never used), moving to the next batch
+// only when the older one hits 0, and splitting a sale across batches when it must.
+const GROUPS = [...new Set(SKUS.map(s => s.group))];
+function groupName(g){ const r = SKUS.find(x => x.group === g); return r ? r.name : g; }
+function groupOfCode(code){ const r = SKUS.find(x => x.code === code); return r ? r.group : code; }
+// Rows of a group that have actually arrived, oldest batch first.
+function groupRows(g){ return state.inventory.filter(r => r.group === g && r.received > 0).sort((a,b) => a.batch - b.batch); }
+// Sellable units in one row. `credit` ({rowCode: units}) adds back units an edited sale already holds.
+function stockOf(r, credit){ return availableQty(r) + ((credit && credit[r.code]) || 0); }
+function groupStock(g, credit){ return groupRows(g).reduce((a,r) => a + Math.max(0, stockOf(r, credit)), 0); }
+// The batch the next unit would come from (falls back to the oldest received batch when all are sold out).
+function firstInLineRow(g, credit){ const rows = groupRows(g); return rows.find(r => stockOf(r, credit) > 0) || rows[0]; }
+// Splits `qty` across a group's batches, oldest first. Returns {parts:[{row,qty}], short} (short = units that couldn't be covered).
+function allocateFifo(g, qty, credit, skipCode){
+  const parts = []; let left = qty;
+  for(const r of groupRows(g)){
+    if(r.code === skipCode) continue;
+    const cap = Math.max(0, stockOf(r, credit));
+    if(cap <= 0) continue;
+    const take = Math.min(cap, left);
+    parts.push({row: r, qty: take}); left -= take;
+    if(left <= 0) break;
+  }
+  return {parts, short: left};
+}
+// Plan for saving an edit. Same paddle: the sale stays in its own batch (existing sales aren't re-assigned) up to
+// what that batch can hold (its own units count as available), and only the overflow goes to other batches.
+// Changed paddle: the assignment is re-run from scratch for the new paddle.
+function planEdit(sale, g, qty){
+  const cur = state.inventory.find(r => r.code === sale.skuCode);
+  if(cur && cur.group === g){
+    const mainQty = Math.min(qty, Math.max(0, stockOf(cur, {[cur.code]: sale.qty})));
+    let extras = [], short = qty - mainQty;
+    if(short > 0){ const a = allocateFifo(g, short, null, cur.code); extras = a.parts; short = a.short; }
+    if(mainQty > 0) return {main: {row: cur, qty: mainQty}, extras, short};
+    return {main: extras[0] || null, extras: extras.slice(1), short};
+  }
+  const a = allocateFifo(g, qty, null);
+  return {main: a.parts[0] || null, extras: a.parts.slice(1), short: a.short};
+}
+function describeParts(parts){ return parts.map(p => `${p.qty} from Batch ${p.row.batch} (#${p.row.order})`).join(', '); }
+// Re-reads sales from the database so stock is current before assigning batches (another partner may have sold since this page loaded).
+async function refreshSalesFromDb(){
+  const { data, error } = await supabaseClient.from('sales').select(SALE_COLUMNS).order('created_at', { ascending: true });
+  if(error) throw error;
+  state.sales = (data || []).map(rowToSale);
+  recomputeInventory();
+}
 function paddleLabel(code, fallbackName){
   const r = SKUS.find(x=>x.code === code);
   return r ? `${r.name} (#${r.order})` : (fallbackName || code || '');
@@ -379,42 +431,70 @@ async function deleteSale(id, pin){
 
 // Edits require the same access PIN, checked via the UPDATE RLS policy the
 // same way deletes are. `changes` is a plain object of snake_case columns.
+// opts.extraInserts: overflow rows (no access_code) for units that had to move to another batch.
+// opts.auditNext: the merged "after" snapshot to record in History (includes any auto-split details).
 // Returns {ok:true}, {ok:false, reason:'pin'} for a rejected PIN, or
 // {ok:false, reason:'error', error} for anything else (network, database).
-async function updateSale(id, changes, pin){
+async function updateSale(id, changes, pin, opts){
+  opts = opts || {};
+  let insertedRows = [];
+  const pinClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    global: { headers: { 'x-pin': pin } }
+  });
+  const classify = (error)=>{
+    const m = (error.message || '').toLowerCase();
+    return (error.code === '42501' || m.includes('row-level security') || m.includes('policy'))
+      ? {ok:false, reason:'pin'} : {ok:false, reason:'error', error};
+  };
+  // If the sale itself can't be updated after overflow rows were added, take those rows back out again.
+  const undoInserts = async ()=>{
+    if(!insertedRows.length) return;
+    try{ await pinClient.from('sales').delete().in('id', insertedRows.map(r => r.id)); }catch(e){}
+  };
   try{
     const existing = state.sales.find(s => String(s.id) === String(id));
     const previousSnapshot = existing ? {...existing} : null;
-    const pinClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      global: { headers: { 'x-pin': pin } }
-    });
+
+    // 1) Overflow rows first. The insert is PIN-protected too, so a wrong PIN stops here with nothing changed.
+    if(opts.extraInserts && opts.extraInserts.length){
+      const ins = await supabaseClient.from('sales')
+        .insert(opts.extraInserts.map(r => ({...r, access_code: pin})))
+        .select(SALE_COLUMNS);
+      if(ins.error) return classify(ins.error);
+      insertedRows = ins.data || [];
+    }
+
+    // 2) The sale itself.
     const { data, error } = await pinClient
       .from('sales')
       .update(changes)
       .eq('id', id)
       .select(SALE_COLUMNS);
-    if(error){
-      const m = (error.message || '').toLowerCase();
-      if(error.code === '42501' || m.includes('row-level security') || m.includes('policy')) return {ok:false, reason:'pin'};
-      return {ok:false, reason:'error', error};
+    if(error){ await undoInserts(); return classify(error); }
+    if(!data || !data.length){
+      await undoInserts();
+      // With overflow rows the PIN was already accepted, so an empty result means the sale is gone, not a wrong PIN.
+      return insertedRows.length ? {ok:false, reason:'error', error:{message:'this sale no longer exists'}} : {ok:false, reason:'pin'};
     }
-    if(!data || !data.length) return {ok:false, reason:'pin'}; // RLS silently excluded the row — wrong PIN
     const updated = rowToSale(data[0]);
     const idx = state.sales.findIndex(s => String(s.id) === String(id));
     if(idx !== -1) state.sales[idx] = updated; else state.sales.push(updated);
+    insertedRows.forEach(r => state.sales.push(rowToSale(r)));
     recomputeInventory();
-    await logAudit('edit', updated, { previous: previousSnapshot, next: updated });
+
+    const snap = opts.auditNext || updated;   // merged totals when the sale was split
+    await logAudit('edit', snap, { previous: previousSnapshot, next: snap });
     if(!state.history) state.history = [];
     state.history.unshift({
       id: 'local-' + Date.now(), action: 'edit', saleId: updated.id,
-      skuCode: updated.skuCode, skuName: updated.skuName, qty: updated.qty,
-      unitPrice: updated.unitPrice, total: updated.total, customer: updated.customer,
-      channel: updated.channel, soldBy: updated.soldBy, status: updated.status,
-      paid: updated.paid, changedBy: currentUser || 'Unknown', changedAt: new Date().toISOString(),
-      previousValues: previousSnapshot, newValues: updated
+      skuCode: snap.skuCode, skuName: snap.skuName, qty: snap.qty,
+      unitPrice: snap.unitPrice, total: snap.total, customer: snap.customer,
+      channel: snap.channel, soldBy: snap.soldBy, status: snap.status,
+      paid: snap.paid, changedBy: currentUser || 'Unknown', changedAt: new Date().toISOString(),
+      previousValues: previousSnapshot, newValues: snap
     });
     return {ok:true};
-  }catch(e){ return {ok:false, reason:'error', error:e}; }
+  }catch(e){ await undoInserts(); return {ok:false, reason:'error', error:e}; }
 }
 
 async function loadData(){
@@ -616,15 +696,17 @@ function renderInventory(){
 }
 
 function renderSaleForm(){
-  // Only paddles that have actually arrived can be sold. Rows still on order are not offered.
-  const sellable = state.inventory.filter(s=>s.received > 0);
-  const skuOptions = sellable.map(s=>{
-    const remaining = availableQty(s);
-    return `<option value="${s.code}" ${remaining<=0?'disabled':''}>${s.name} — #${s.order} (${remaining} left)</option>`;
+  // Each paddle is listed once (batches are hidden) with its total sellable stock across every batch that has
+  // arrived. Paddles that haven't arrived in any batch are not offered.
+  const offered = GROUPS.filter(g => groupRows(g).length > 0);
+  const skuOptions = offered.map(g=>{
+    const left = groupStock(g);
+    return `<option value="${g}" ${left<=0?'disabled':''}>${groupName(g)} (${left} left)</option>`;
   }).join('');
-  // The "At landed cost" label shows the cost of whichever paddle is selected; start from the first one in stock.
-  const firstSku = sellable.find(s=>availableQty(s) > 0) || sellable[0];
-  const costLabel = firstSku ? fmtPrecise(firstSku.landedCost) : '';
+  // The "At landed cost" label shows the cost of the batch the sale would come from; start from the first paddle in stock.
+  const firstGroup = offered.find(g => groupStock(g) > 0) || offered[0];
+  const firstRow = firstGroup ? firstInLineRow(firstGroup) : null;
+  const costLabel = firstRow ? fmtPrecise(firstRow.landedCost) : '';
   const soldByOptions = PARTNERS.map(p=>`<option value="${p}" ${currentUser===p?'selected':''}>${p} (partner)</option>`).join('');
   return `
     <h2>Log a sale</h2>
@@ -633,6 +715,7 @@ function renderSaleForm(){
       <div class="field">
         <label>Paddle</label>
         <select id="f_sku">${skuOptions}</select>
+        <div class="hint" id="allocHint" style="display:none;"></div>
       </div>
       <div class="row2">
         <div class="field">
@@ -739,11 +822,13 @@ function renderPayouts(){
 // The edit form mirrors Log a sale: paddle, price tier (auto-filling the unit price), and payment —
 // pre-selected from the sale's current values. A sale with no saved tier opens as Custom at its current price.
 function editFormHtml(s){
-  const rows = state.inventory.filter(r => r.received > 0 || r.code === s.skuCode);
-  const paddleOpts = rows.map(r=>{
-    const left = editAvailable(r, s);
-    const isCurrent = r.code === s.skuCode;
-    return `<option value="${r.code}" ${isCurrent ? 'selected' : ''} ${(left <= 0 && !isCurrent) ? 'disabled' : ''}>${r.name} — #${r.order} (${left} left)</option>`;
+  // One entry per paddle (batches hidden). This sale's own units count as available again, so it can keep or swap its paddle.
+  const saleGroup = groupOfCode(s.skuCode);
+  const credit = {[s.skuCode]: s.qty};
+  const paddleOpts = GROUPS.filter(g => groupRows(g).length > 0 || g === saleGroup).map(g=>{
+    const left = groupStock(g, credit);
+    const isCurrent = g === saleGroup;
+    return `<option value="${g}" ${isCurrent ? 'selected' : ''} ${(left <= 0 && !isCurrent) ? 'disabled' : ''}>${groupName(g)} (${left} left)</option>`;
   }).join('');
   const cur = state.inventory.find(r => r.code === s.skuCode);
   const tierKey = TIER_KEY_BY_LABEL[s.priceTier] || 'custom';
@@ -758,7 +843,7 @@ function editFormHtml(s){
   const paid = s.paid == null ? 0 : s.paid;
   return `
         <div class="edit-form" id="editForm-${s.id}" style="display:none;">
-          <div class="field"><label>Paddle</label><select id="editSku-${s.id}">${paddleOpts}</select></div>
+          <div class="field"><label>Paddle</label><select id="editSku-${s.id}">${paddleOpts}</select><div class="hint" id="editAllocHint-${s.id}" style="display:none;"></div></div>
           <div class="row2">
             <div class="field"><label>Quantity</label><input type="number" min="1" id="editQty-${s.id}" value="${s.qty}"></div>
             <div class="field">
@@ -842,13 +927,20 @@ function renderHistory(){
     .sort((a,b)=> new Date(b.changedAt) - new Date(a.changedAt));
   if(!rows.length) return `<h2>History</h2><div class="empty">No edits or deletions yet — they'll show here when someone changes a sale.</div>`;
   const items = rows.map(h=>{
-    const verb = h.action === 'delete' ? 'Deleted' : 'Edited';
+    const split = h.newValues && h.newValues.autoSplit;
+    // A sale logged in one go that had to be split across batches is stored as an entry with no "before" state.
+    const isNewSplit = h.action === 'edit' && split && !h.previousValues;
+    const verb = h.action === 'delete' ? 'Deleted' : (isNewSplit ? 'Auto-split' : 'Edited');
     // For edits, list exactly what changed (old to new) from the before/after snapshots stored with the entry.
+    const lineStyle = 'color:var(--text-secondary);font-size:12.5px;margin-top:2px;';
     let changeLines = '';
     if(h.action === 'edit' && h.previousValues && h.newValues){
       changeLines = diffSale(h.previousValues, h.newValues).map(d =>
-        `<div style="color:var(--text-secondary);font-size:12.5px;margin-top:2px;">${esc(d.label)}: ${esc(d.from)} to ${esc(d.to)}</div>`
+        `<div style="${lineStyle}">${esc(d.label)}: ${esc(d.from)} to ${esc(d.to)}</div>`
       ).join('');
+    }
+    if(split && split.parts){
+      changeLines += `<div style="${lineStyle}">Split across batches, oldest first: ${esc(split.parts.map(p => `${p.qty} from Batch ${p.batch} (#${p.order})`).join(', '))}</div>`;
     }
     return `
     <div class="activity-item">
@@ -871,7 +963,10 @@ function wireEditForm(s){
         priceLabel = $('editPriceLabel'), hint = $('editTierHint'), status = $('editStatus'),
         paid = $('editPaid'), total = $('editTotal');
   if(!skuSel || !tier) return;
-  const rowFor = ()=> state.inventory.find(r => r.code === skuSel.value);
+  // Which batch's landed cost applies: the sale's own batch while the paddle is unchanged, otherwise the batch the new paddle would come from.
+  const saleGroup = groupOfCode(s.skuCode);
+  const rowFor = ()=> skuSel.value === saleGroup ? state.inventory.find(r => r.code === s.skuCode) : firstInLineRow(skuSel.value);
+  const allocHint = $('editAllocHint');
 
   // Recomputes the displayed sale total; if the sale is marked Paid, amount paid always equals the total.
   const syncTotal = (autofillPaid)=>{
@@ -898,6 +993,13 @@ function wireEditForm(s){
       hint.innerHTML = `${VOLUME_MIN_QTY}+ paddles in one purchase qualifies for Volume pricing (${fmt(PRICE.volume)}). <a href="#" id="editApplyVolume-${s.id}" style="color:var(--accent);font-weight:600;">Use Volume tier</a>`;
       $('editApplyVolume').onclick = (ev)=>{ ev.preventDefault(); tier.value = 'volume'; fillPriceForTier(); refreshUi(true); };
     } else { hint.style.display = 'none'; hint.innerHTML = ''; }
+    // Heads-up when saving this quantity would spill into another batch.
+    const wantQty = parseInt(qty.value, 10);
+    const plan = wantQty > 0 ? planEdit(s, skuSel.value, wantQty) : null;
+    if(plan && plan.main && plan.short === 0 && plan.extras.length){
+      allocHint.style.display = 'block';
+      allocHint.textContent = `This sale will be split across batches, oldest first: ${describeParts([plan.main, ...plan.extras])}.`;
+    } else { allocHint.style.display = 'none'; allocHint.textContent = ''; }
     syncTotal(autofillPaid);
   };
 
@@ -921,8 +1023,9 @@ function attachHandlers(){
     const hint = document.getElementById('tierHint');
 
     // Re-syncs everything that depends on the paddle, quantity, or tier.
+    const allocHint = document.getElementById('allocHint');
     const refreshTier = ()=>{
-      const sku = state.inventory.find(s=>s.code === skuSel.value);
+      const sku = firstInLineRow(skuSel.value);   // the batch the next unit comes from (oldest with sellable stock)
       const tier = priceSel.value;
 
       // "At landed cost" always shows the landed cost of the currently selected paddle's batch.
@@ -943,6 +1046,14 @@ function attachHandlers(){
         priceField.style.display = 'none';
         if(priceInput.readOnly){ priceInput.readOnly = false; priceInput.value = ''; }
       }
+
+      // Heads-up when this quantity is more than the oldest batch can cover, so it will be split across batches.
+      const wantQty = parseInt(qtyInput.value, 10);
+      const plan = wantQty > 0 ? allocateFifo(skuSel.value, wantQty) : {parts: [], short: 0};
+      if(plan.parts.length > 1 && plan.short === 0){
+        allocHint.style.display = 'block';
+        allocHint.textContent = `This sale will be split across batches, oldest first: ${describeParts(plan.parts)}.`;
+      } else { allocHint.style.display = 'none'; allocHint.textContent = ''; }
 
       // Suggest (never force) the Volume tier for 5+ paddles when Standard is selected.
       const qty = parseInt(qtyInput.value, 10);
@@ -1054,16 +1165,13 @@ function attachHandlers(){
     btn.onclick = async ()=>{
       const id = btn.dataset.id;
       const errBox = document.getElementById('editSaveErr-' + id);
-      const fail = (msg)=>{ errBox.innerHTML = `<div class="error">${msg}</div>`; };
+      const fail = (msg)=>{ btn.disabled = false; errBox.innerHTML = `<div class="error">${msg}</div>`; };
       errBox.innerHTML = '';
-      const sale = state.sales.find(x => String(x.id) === String(id));
-      if(!sale){ fail('This sale is no longer in the list — reload and try again.'); return; }
 
-      const skuCode = document.getElementById('editSku-' + id).value;
-      const row = state.inventory.find(r => r.code === skuCode);
+      const group = document.getElementById('editSku-' + id).value;   // the paddle; the batch is assigned below
       const qty = parseInt(document.getElementById('editQty-' + id).value, 10);
       const tierKey = document.getElementById('editTier-' + id).value;
-      let unitPrice = round2(parseFloat(document.getElementById('editPrice-' + id).value));
+      const typedPrice = round2(parseFloat(document.getElementById('editPrice-' + id).value));
       const customer = document.getElementById('editCustomer-' + id).value.trim();
       const channel = document.getElementById('editChannel-' + id).value.trim();
       const soldBy = document.getElementById('editSoldby-' + id).value.trim();
@@ -1071,44 +1179,63 @@ function attachHandlers(){
       const paidTyped = parseFloat(document.getElementById('editPaid-' + id).value || 0);
       const pin = document.getElementById('editSavePin-' + id).value;
 
-      if(!row){ fail('Choose a paddle.'); return; }
+      if(!GROUPS.includes(group)){ fail('Choose a paddle.'); return; }
       if(!qty || qty < 1){ fail('Enter a valid quantity.'); return; }
-      if(tierKey === 'cost') unitPrice = round2(row.landedCost);   // always the selected paddle's batch cost
-      if(!unitPrice || unitPrice <= 0){ fail('Enter a valid price.'); return; }
+      if(tierKey !== 'cost' && (!typedPrice || typedPrice <= 0)){ fail('Enter a valid price.'); return; }
       if(!customer){ fail('Enter the customer name.'); return; }
       if(!soldBy){ fail('Enter who sold it.'); return; }
-      // Stock: the sale's own current units count as available, so keeping or swapping the paddle both work.
-      const avail = editAvailable(row, sale);
-      if(qty > avail){ fail(`Only ${avail} left in stock for this paddle.`); return; }
-
-      const total = round2(qty * unitPrice);
-      // A sale marked Paid always records its full total as paid; otherwise it can't exceed the total.
-      const amountPaid = status === 'Paid' ? total : Math.max(0, Math.min(round2(paidTyped || 0), total));
-
-      // A sale saved before price tiers existed has no tier. Leave it blank unless the tier or price was changed.
-      let tierLabel = TIER_LABELS[tierKey];
-      if(!sale.priceTier && tierKey === 'custom' && unitPrice === round2(sale.unitPrice)) tierLabel = '';
-
-      const next = {...sale, skuCode, skuName: row.name, qty, unitPrice, total, customer, channel, soldBy, status,
-                    paid: amountPaid, priceTier: tierLabel};
-      const diffs = diffSale(sale, next);
-      if(!diffs.length){ fail('No changes to save.'); return; }
       if(!pin){ fail('Enter the PIN.'); return; }
 
-      const changes = {
-        sku_code: skuCode, paddle_name: row.name, qty, unit_price: unitPrice, total, customer, channel,
-        sold_by: soldBy, status, amount_paid: amountPaid
-      };
-      if(tierLabel !== '' || sale.priceTier) changes.price_tier = tierLabel || null;   // untouched tier-less sale stays untouched
-
       btn.disabled = true;
-      const res = await updateSale(id, changes, pin);
+      // Re-read sales so stock (and the batch assignment that depends on it) is current.
+      try{ await refreshSalesFromDb(); }
+      catch(e){ fail(describeSubmitError(e, 'check current stock')); return; }
+      const sale = state.sales.find(x => String(x.id) === String(id));
+      if(!sale){ fail('This sale is no longer in the list — reload and try again.'); return; }
+
+      // Same paddle: the sale stays in its own batch (existing sales aren't re-assigned) and only any overflow moves
+      // on to the next batch. Different paddle: the oldest-batch-first assignment is re-run for the new paddle.
+      const plan = planEdit(sale, group, qty);
+      if(plan.short > 0 || !plan.main){ fail(`Only ${qty - plan.short} left in stock for this paddle.`); return; }
+      const parts = [plan.main, ...plan.extras];
+      const unitFor = row => tierKey === 'cost' ? round2(row.landedCost) : typedPrice;   // at-cost = each batch's own cost
+      const partTotals = parts.map(p => round2(p.qty * unitFor(p.row)));
+      const grandTotal = round2(partTotals.reduce((a, b) => a + b, 0));
+      // A sale marked Paid always records its full total as paid; otherwise it can't exceed the total.
+      const paidTotal = status === 'Paid' ? grandTotal : Math.max(0, Math.min(round2(paidTyped || 0), grandTotal));
+      let paidLeft = paidTotal;
+      const partPaid = parts.map((p, i)=>{
+        const share = i === parts.length - 1 ? round2(paidLeft) : round2(grandTotal > 0 ? paidTotal * partTotals[i] / grandTotal : 0);
+        paidLeft = round2(paidLeft - share);
+        return share;
+      });
+
+      // A sale saved before price tiers existed has no tier. Leave it blank unless the tier or price was changed.
+      const mainUnit = unitFor(plan.main.row);
+      let tierLabel = TIER_LABELS[tierKey];
+      if(!sale.priceTier && tierKey === 'custom' && mainUnit === round2(sale.unitPrice)) tierLabel = '';
+
+      // "After" snapshot for the change list / History: the whole sale, even if part of it moved to another batch.
+      const next = {...sale, skuCode: plan.main.row.code, skuName: plan.main.row.name, qty, unitPrice: mainUnit,
+                    total: grandTotal, customer, channel, soldBy, status, paid: paidTotal, priceTier: tierLabel};
+      if(!diffSale(sale, next).length){ fail('No changes to save.'); return; }
+
+      const rowFields = (p, i)=>({ sku_code: p.row.code, paddle_name: p.row.name, qty: p.qty, unit_price: unitFor(p.row),
+        total: partTotals[i], customer, channel, sold_by: soldBy, status, amount_paid: partPaid[i] });
+      const changes = rowFields(parts[0], 0);
+      if(tierLabel !== '' || sale.priceTier) changes.price_tier = tierLabel || null;   // an untouched tier-less sale stays untouched
+      const extraInserts = parts.slice(1).map((p, i) => ({date: sale.date, ...rowFields(p, i + 1), price_tier: tierLabel || null}));
+      const autoSplit = parts.length > 1
+        ? {parts: parts.map(p => ({code: p.row.code, batch: p.row.batch, order: p.row.order, qty: p.qty, unitPrice: unitFor(p.row)}))}
+        : undefined;
+
+      const res = await updateSale(id, changes, pin, {extraInserts, auditNext: autoSplit ? {...next, autoSplit} : next});
       btn.disabled = false;
       if(!res.ok){
         fail(res.reason === 'pin' ? 'Incorrect PIN.' : describeSubmitError(res.error, 'save the changes'));
         return;
       }
-      showToast('Sale updated');
+      showToast(parts.length > 1 ? 'Sale updated — split across batches' : 'Sale updated');
       render();
     };
   });
@@ -1123,17 +1250,12 @@ function attachHandlers(){
         errBox.innerHTML = '<div class="error">Select your name at the top before logging a sale.</div>';
         return;
       }
-      const skuCode = document.getElementById('f_sku').value;
+      const group = document.getElementById('f_sku').value;   // the paddle; the batch is assigned below
       const qty = parseInt(document.getElementById('f_qty').value, 10);
       const tierKey = document.getElementById('f_price').value;
       const customPrice = document.getElementById('f_customPrice').value;
-      const sku = state.inventory.find(s=>s.code===skuCode);
-      // Unit price comes from the tier: a fixed price, the paddle's landed cost, or whatever was typed in.
-      let unitPrice;
-      if(tierKey === 'custom') unitPrice = parseFloat(customPrice);
-      else if(tierKey === 'cost') unitPrice = sku ? sku.landedCost : NaN;
-      else unitPrice = PRICE[tierKey];
-      unitPrice = round2(unitPrice);
+      // Fixed and custom tiers share one unit price. "At landed cost" is priced per batch (each batch's own cost), below.
+      const sharedUnitPrice = tierKey === 'custom' ? round2(parseFloat(customPrice)) : (tierKey === 'cost' ? null : PRICE[tierKey]);
       const priceTier = TIER_LABELS[tierKey] || '';
       const customer = document.getElementById('f_customer').value.trim();
       const channel = document.getElementById('f_channel').value.trim();
@@ -1144,32 +1266,60 @@ function attachHandlers(){
       const pin = document.getElementById('f_pin').value;
 
       if(!qty || qty < 1){ errBox.innerHTML = '<div class="error">Enter a valid quantity.</div>'; return; }
-      if(!unitPrice || unitPrice <= 0){ errBox.innerHTML = '<div class="error">Enter a valid price.</div>'; return; }
+      if(tierKey !== 'cost' && (!sharedUnitPrice || sharedUnitPrice <= 0)){ errBox.innerHTML = '<div class="error">Enter a valid price.</div>'; return; }
       if(!customer){ errBox.innerHTML = '<div class="error">Enter the customer name.</div>'; return; }
       if(soldBy === '__ambassador'){
         if(!ambName){ errBox.innerHTML = '<div class="error">Enter the ambassador name.</div>'; return; }
         soldBy = ambName;
       }
       if(!pin){ errBox.innerHTML = '<div class="error">Enter the access PIN.</div>'; return; }
-      if(!sku){ errBox.innerHTML = '<div class="error">Choose a paddle.</div>'; return; }
-      const remaining = availableQty(sku);
-      if(qty > remaining){ errBox.innerHTML = `<div class="error">Only ${remaining} left in stock for this paddle.</div>`; return; }
+      if(!groupRows(group).length){ errBox.innerHTML = '<div class="error">Choose a paddle.</div>'; return; }
 
-      const total = round2(qty * unitPrice);
       const submitBtn = form.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
 
+      // Stock may have changed since this page loaded (another partner may have sold), and the batch
+      // assignment depends on it — so re-read sales first.
+      try{ await refreshSalesFromDb(); }
+      catch(e){
+        submitBtn.disabled = false;
+        errBox.innerHTML = `<div class="error">${describeSubmitError(e, 'check current stock')}</div>`;
+        return;
+      }
+
+      // Oldest received batch first (demo units and not-yet-received paddles are never used).
+      const plan = allocateFifo(group, qty);
+      if(plan.short > 0){
+        submitBtn.disabled = false;
+        errBox.innerHTML = `<div class="error">Only ${qty - plan.short} left in stock for this paddle.</div>`;
+        return;
+      }
+      const unitFor = row => tierKey === 'cost' ? round2(row.landedCost) : sharedUnitPrice;
+      const partTotals = plan.parts.map(p => round2(p.qty * unitFor(p.row)));
+      const grandTotal = round2(partTotals.reduce((a, b) => a + b, 0));
+      const paidTotal = Math.min(paid, grandTotal);
+      // Amount paid is split across the rows in proportion to each row's value (which is the same as by units
+      // whenever the unit price is the same); the last row takes any rounding remainder.
+      let paidLeft = paidTotal;
+      const rowsToInsert = plan.parts.map((p, i)=>{
+        const isLast = i === plan.parts.length - 1;
+        const share = isLast ? round2(paidLeft) : round2(grandTotal > 0 ? paidTotal * partTotals[i] / grandTotal : 0);
+        paidLeft = round2(paidLeft - share);
+        return {
+          date: today(), sku_code: p.row.code, paddle_name: p.row.name,
+          qty: p.qty, unit_price: unitFor(p.row), total: partTotals[i], customer, channel,
+          sold_by: soldBy, status, amount_paid: share,
+          price_tier: priceTier,
+          access_code: pin
+        };
+      });
+
       let data, error;
       try{
+        // One request for every row, so a split sale is saved completely or not at all.
         const result = await supabaseClient
           .from('sales')
-          .insert([{
-            date: today(), sku_code: skuCode, paddle_name: sku.name,
-            qty, unit_price: unitPrice, total, customer, channel,
-            sold_by: soldBy, status, amount_paid: Math.min(paid, total),
-            price_tier: priceTier,
-            access_code: pin
-          }])
+          .insert(rowsToInsert)
           .select(SALE_COLUMNS);
         data = result.data; error = result.error;
       }catch(e){
@@ -1186,9 +1336,21 @@ function attachHandlers(){
         return;
       }
 
-      if(data && data[0]){ state.sales.push(rowToSale(data[0])); }
+      (data || []).forEach(r => state.sales.push(rowToSale(r)));
       recomputeInventory();
-      showToast('Sale logged');
+
+      // A sale that had to be split across batches is recorded in History.
+      const wasSplit = plan.parts.length > 1 && data && data.length;
+      if(wasSplit){
+        const snap = {id: data[0].id, skuCode: plan.parts[0].row.code, skuName: groupName(group), qty, unitPrice: rowsToInsert[0].unit_price,
+          total: grandTotal, customer, channel, soldBy, status, paid: paidTotal, priceTier};
+        const autoSplit = {parts: plan.parts.map((p, i) => ({code: p.row.code, batch: p.row.batch, order: p.row.order, qty: p.qty, unitPrice: rowsToInsert[i].unit_price}))};
+        await logAudit('edit', snap, {previous: null, next: {...snap, autoSplit}});
+        state.history.unshift({id: 'local-' + Date.now(), action: 'edit', saleId: snap.id, skuCode: snap.skuCode, skuName: snap.skuName, qty,
+          unitPrice: snap.unitPrice, total: grandTotal, customer, channel, soldBy, status, paid: paidTotal,
+          changedBy: currentUser || 'Unknown', changedAt: new Date().toISOString(), previousValues: null, newValues: {...snap, autoSplit}});
+      }
+      showToast(wasSplit ? 'Sale logged — split across batches' : 'Sale logged');
       activeTab = 'overview';
       render();
     };
