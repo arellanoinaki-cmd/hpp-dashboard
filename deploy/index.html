@@ -196,7 +196,8 @@
 // =====================================================================================================
 //  ordered  = quantity on the purchase order
 //  received = quantity that has ACTUALLY ARRIVED   <-- change this when a shipment lands
-//  demo     = permanent demo units kept in the shop, NOT for sale (they stay counted in "received")
+//  demo     = demo units kept in the shop, NOT for sale (they stay counted in "received")
+//  note     = optional short text shown under the paddle on the Inventory tab
 //  Everything on screen (Overview, Inventory, Log a sale, Edit) is calculated from these numbers.
 //  A paddle whose received is below ordered is listed under "On the way" and can't be sold yet.
 //  Partly arrived? Enter the number that has arrived (e.g. received:3) — the rest stays "On the way".
@@ -207,9 +208,9 @@ const QTY = {
   "J3CR-BLU":         {ordered:5,  received:5,  demo:1},
   "J3CR-WHT":         {ordered:5,  received:5,  demo:2},
   "J2CR-BLU-EXT":     {ordered:3,  received:3,  demo:0},
-  "J2CR-WHT-EXT":     {ordered:3,  received:3,  demo:1},
+  "J2CR-WHT-EXT":     {ordered:3,  received:3,  demo:1, note:"Opened from stock, not part of the original 9"},
   "J2CR-BLU-ORIG":    {ordered:12, received:12, demo:1},
-  "J2CR-WHT-ORIG":    {ordered:12, received:12, demo:1},
+  "J2CR-WHT-ORIG":    {ordered:12, received:12, demo:2},
   // ---- Batch 2 · #HPC107629 — 46 of 100 received so far ----
   "J2CR-WHT-ORIG-B2": {ordered:20, received:20, demo:0},
   "J2CR-BLU-ORIG-B2": {ordered:21, received:21, demo:0},
@@ -238,8 +239,8 @@ const PARTNERS = ["Iñaki Arellano","Francis Cancio","Juancho Sy / Javi Cojuangc
 // freight is never deducted again anywhere.
 const SKUS = [
   // Batch 1 — Order #HPC102340. All 100 received. Landed cost: 727,288.49 net / 91 sellable = 7,992.18.
-  // 9 of the 100 are permanent demo units (not for sale), recorded in the QTY block at the top. They stay in `received`
-  // but are excluded from Available to sell.
+  // 10 of the 100 are demo units (not for sale), recorded in the QTY block at the top: the original 9 permanent demos plus
+  // 1 J2CR White Extended opened from sellable stock. They stay in `received` but are excluded from Available to sell.
   {code:"J6CR-WHT", batch:1, group:"J6CR-WHT", name:"J6CR — White", color:"White", model:"J6CR", landedCost:7992.18, order:"HPC102340"},
   {code:"J6CR-BLU", batch:1, group:"J6CR-BLU", name:"J6CR — Blue", color:"Blue", model:"J6CR", landedCost:7992.18, order:"HPC102340"},
   {code:"J3CR-BLU", batch:1, group:"J3CR-BLU", name:"J3CR — Blue", color:"Blue", model:"J3CR", landedCost:7992.18, order:"HPC102340"},
@@ -780,7 +781,7 @@ function renderInventory(){
     const body = arrived.length ? arrived.map(r => {
       const status = stockStatus(r);
       return `<tr>
-        <td>${plainName(r)} <span class="badge batch">Batch ${r.batch}</span>${r.demo > 0 ? ` <span class="badge demo">${r.demo} demo</span>` : ''}</td>
+        <td>${plainName(r)} <span class="badge batch">Batch ${r.batch}</span>${r.demo > 0 ? ` <span class="badge demo">${r.demo} demo</span>` : ''}${r.note ? `<div style="color:var(--text-tertiary);font-size:11.5px;margin-top:3px;">${esc(r.note)}</div>` : ''}</td>
         <td>${r.ordered}</td>
         <td>${r.received}</td>
         <td>${r.demo || 0}</td>
