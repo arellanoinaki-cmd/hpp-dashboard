@@ -254,6 +254,30 @@
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0A0A0A;color:#fff;padding:11px 20px;border-radius:999px;font-family:var(--f-mono);font-size:12px;letter-spacing:.04em;opacity:0;pointer-events:none;transition:opacity .3s var(--ease);z-index:50;max-width:calc(100vw - 32px);text-align:center;}
   .toast.show{opacity:1;}
 
+
+  /* ===== Proof of payment, remits ===== */
+  input[type="checkbox"]{width:auto;padding:0;margin:0 8px 0 0;accent-color:#1338BE;vertical-align:-2px;}
+  .vh{position:absolute !important;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;}
+  .remember{display:flex;align-items:center;font-family:var(--f-mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-top:10px;cursor:pointer;}
+  .pay-box{border:1px dashed var(--line);border-radius:var(--r-md);padding:16px 16px 4px;margin-bottom:18px;background:var(--shell);}
+  .pay-title{font-family:var(--f-display);font-weight:800;letter-spacing:-.035em;font-size:17px;margin-bottom:12px;}
+  .pick-btns{display:flex;gap:10px;flex-wrap:wrap;}
+  .pick-btns .btn{flex:1 1 150px;}
+  .help-link{display:inline-block;margin-top:10px;font-size:13px;color:var(--blue-text);font-weight:600;}
+  .help-box{background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 14px 10px 8px;margin-top:8px;font-size:13px;color:var(--text-2);}
+  .help-box ol{margin:0;padding-left:22px;} .help-box li{margin:6px 0;}
+  .proof-prev img{display:block;max-width:100%;max-height:260px;border-radius:var(--r-sm);margin-top:12px;border:1px solid var(--line);}
+  .prev-row{display:flex;align-items:center;justify-content:space-between;margin-top:6px;}
+  .proof-chip{padding:3px 10px;font-size:10.5px;vertical-align:middle;}
+  .trail{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);}
+  .pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;}
+  .pm-v{font-family:var(--f-display);font-weight:800;letter-spacing:-.035em;font-size:20px;}
+  .tick{display:flex;align-items:flex-start;gap:6px;padding:10px 12px;border-radius:var(--r-sm);background:var(--fill);margin-bottom:8px;font-size:14px;cursor:pointer;}
+  .tick input{margin-top:4px;}
+  .proof-modal{position:fixed;inset:0;background:rgba(10,10,10,.7);z-index:60;align-items:center;justify-content:center;padding:16px;}
+  .pm-card{background:var(--card);border-radius:var(--r-card);padding:16px;max-width:560px;width:100%;max-height:92vh;overflow:auto;}
+  .pm-card img{display:block;width:100%;border-radius:var(--r-sm);margin-top:8px;}
+
   /* ===== Responsive ===== */
   @media (max-width:1100px){
     .ov{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
@@ -305,6 +329,7 @@
       <div class="logo-chip"><img src="teamhonolulu_L1-equal_solid_white_transparent.png" alt="Team Honolulu"></div>
       <nav id="tabs"></nav>
       <div class="who">
+        <button id="lockBtn" class="chip" type="button" style="display:none;" title="Forget the PIN on this device">Lock</button>
         <button id="themeToggleTop" class="theme-toggle rail-top" type="button" title="Switch light or dark" aria-label="Switch light or dark"></button>
         <div class="user-pill">
           <div class="av" id="whoAvatar">?</div>
@@ -316,6 +341,7 @@
     <main id="main"></main>
   </div>
 </div>
+<div class="proof-modal" id="proofModal" style="display:none;"><div class="pm-card"><button type="button" class="btn-cancel-text" id="pmClose" style="float:right;">Close</button><div class="pm-body"></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://unpkg.com/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
@@ -421,7 +447,21 @@ let salesSearch = '';   // what is typed in the Sales search box (kept when the 
 // row comes back to the client (initial load, or the row returned by an
 // insert/update/delete). access_code (the PIN) is deliberately excluded: the
 // PIN should only ever travel FROM the client TO Supabase, never be read back.
-const SALE_COLUMNS = 'id,date,sku_code,paddle_name,qty,unit_price,total,customer,channel,sold_by,status,amount_paid,price_tier,created_at';
+const SALE_COLUMNS_BASE = 'id,date,sku_code,paddle_name,qty,unit_price,total,customer,channel,sold_by,status,amount_paid,price_tier,created_at';
+const SALE_COLUMNS_FULL = SALE_COLUMNS_BASE + ',payment_method,payment_ref,proof_path,paid_to,received_by,proof_at';
+let SALE_COLUMNS = SALE_COLUMNS_FULL;
+// If the SQL for proof of payment has not been run yet, the new columns don't exist. Then the app falls back to the old
+// columns and hides the proof features, instead of breaking.
+let proofReady = true;
+async function fetchSalesRows(){
+  let r = await supabaseClient.from('sales').select(SALE_COLUMNS).order('created_at', { ascending: true });
+  if(r.error && SALE_COLUMNS !== SALE_COLUMNS_BASE && /42703|column|does not exist/i.test((r.error.code || '') + ' ' + (r.error.message || ''))){
+    SALE_COLUMNS = SALE_COLUMNS_BASE; proofReady = false;
+    r = await supabaseClient.from('sales').select(SALE_COLUMNS).order('created_at', { ascending: true });
+  }
+  if(r.error) throw r.error;
+  return r.data || [];
+}
 
 function fmt(n){ return "₱" + Math.round(n).toLocaleString(); }
 // Two-decimal peso format, for landed cost (e.g. ₱7,992.18) where whole pesos would hide the cents.
@@ -514,9 +554,7 @@ function planEdit(sale, g, qty){
 function describeParts(parts){ return parts.map(p => `${p.qty} from Batch ${p.row.batch} (#${p.row.order})`).join(', '); }
 // Re-reads sales from the database so stock is current before assigning batches (another partner may have sold since this page loaded).
 async function refreshSalesFromDb(){
-  const { data, error } = await supabaseClient.from('sales').select(SALE_COLUMNS).order('created_at', { ascending: true });
-  if(error) throw error;
-  state.sales = (data || []).map(rowToSale);
+  state.sales = (await fetchSalesRows()).map(rowToSale);
   recomputeInventory();
 }
 function paddleLabel(code, fallbackName){
@@ -537,6 +575,11 @@ function diffSale(a, b){
   if((a.soldBy || '') !== (b.soldBy || '')) add('Sold by', a.soldBy || 'none', b.soldBy || 'none');
   if((a.status || '') !== (b.status || '')) add('Payment status', a.status || 'none', b.status || 'none');
   if(round2(+a.paid || 0) !== round2(+b.paid || 0)) add('Amount paid', fmtMoney(a.paid || 0), fmtMoney(b.paid || 0));
+  if((a.paymentMethod || '') !== (b.paymentMethod || '')) add('Payment method', a.paymentMethod || 'none', b.paymentMethod || 'none');
+  if(baseRef(a.paymentRef) !== baseRef(b.paymentRef)) add('Reference', baseRef(a.paymentRef) || 'none', baseRef(b.paymentRef) || 'none');
+  if((a.paidTo || '') !== (b.paidTo || '')) add('Paid to', a.paidTo || 'none', b.paidTo || 'none');
+  if((a.receivedBy || '') !== (b.receivedBy || '')) add('Received by', a.receivedBy || 'none', b.receivedBy || 'none');
+  if((a.proofPath || '') !== (b.proofPath || '')) add('Proof image', a.proofPath ? 'on file' : 'none', b.proofPath ? 'updated' : 'removed');
   return out;
 }
 function today(){ return new Date().toISOString().slice(0,10); }
@@ -577,7 +620,9 @@ function rowToSale(row){
     qty: row.qty, unitPrice: row.unit_price, total: row.total, customer: row.customer,
     channel: row.channel, soldBy: row.sold_by, status: row.status, paid: row.amount_paid,
     priceTier: row.price_tier || '',
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    paymentMethod: row.payment_method || '', paymentRef: row.payment_ref || '', proofPath: row.proof_path || '',
+    paidTo: row.paid_to || '', receivedBy: row.received_by || '', proofAt: row.proof_at || null
   };
 }
 
@@ -728,12 +773,7 @@ async function updateSale(id, changes, pin, opts){
 
 async function loadData(){
   try{
-    const { data, error } = await supabaseClient
-      .from('sales')
-      .select(SALE_COLUMNS)
-      .order('created_at', { ascending: true });
-    if(error) throw error;
-    state.sales = (data || []).map(rowToSale);
+    state.sales = (await fetchSalesRows()).map(rowToSale);
   }catch(e){ showToast("Couldn't load sales data"); }
   recomputeInventory();
   try{
@@ -744,6 +784,7 @@ async function loadData(){
     if(error) throw error;
     state.history = (data || []).map(rowToAudit);
   }catch(e){ state.history = state.history || []; }
+  await loadRemits();
   try{
     const saved = localStorage.getItem('hpp_identity');
     if(saved) currentUser = saved;
@@ -765,6 +806,8 @@ function describeSubmitError(error, action){
   action = action || 'log the sale';
   if(!error) return "Something went wrong — try again.";
   const msg = (error.message || String(error) || '').toLowerCase();
+  if(error.code === '23505' && msg.includes('payment_ref')) return 'That reference number is already used by another sale.';
+  if(error.code === '23514' && msg.includes('sales_proof_required')) return 'The payment details are incomplete: choose the method, who it was paid to, and add the reference and proof.';
   const isRlsRejection = error.code === '42501' || msg.includes('row-level security') || msg.includes('policy');
   if(isRlsRejection) return 'Incorrect PIN. Please try again.';
   const isNetworkFailure = msg.includes('fetch') || msg.includes('network') || msg.includes('timeout')
@@ -840,9 +883,12 @@ function render(){
     else if(activeTab === 'inventory') main.innerHTML = renderInventory();
     else if(activeTab === 'sale') main.innerHTML = renderSaleForm();
     else if(activeTab === 'salesLog') main.innerHTML = renderSalesLog();
+    else if(activeTab === 'remits') main.innerHTML = renderRemits();
     else if(activeTab === 'history') main.innerHTML = renderHistory();
     attachHandlers();
     if(activeTab === 'overview') wireOverview();
+    if(activeTab === 'remits') wireRemits();
+    refreshPinUi();
     requestAnimationFrame(()=>{ main.classList.remove('fade'); });
   }, 90);
 }
@@ -850,7 +896,7 @@ function render(){
 function renderNav(){
   const tabs = [
     ['overview','Overview'], ['inventory','Inventory'], ['sale','Log a sale'],
-    ['salesLog','Sales'], ['history','History']
+    ['salesLog','Sales'], ['remits','Remits'], ['history','History']
   ];
   document.getElementById('tabs').innerHTML = tabs.map(([key,label])=>
     `<button data-tab="${key}" class="tab-btn ${activeTab===key?'active':''}">${label}</button>`
@@ -1193,11 +1239,14 @@ function renderSaleForm(){
           <input type="number" id="f_paid" min="0" step="any">
         </div>
       </div>
-      <div class="field">
+      ${paymentFieldsHtml('payf', null)}
+      <div class="field" data-pin-field>
         <label>PIN</label>
         <input type="password" id="f_pin" placeholder="Enter access PIN" inputmode="numeric">
         <div class="hint">Required to save a sale to the shared log.</div>
+        ${rememberHtml('f_rem')}
       </div>
+      <div class="hint" data-pin-note style="display:none;margin-bottom:14px;">Unlocked on this device. Nothing to type.</div>
       <div id="formError"></div>
       <button type="submit" class="primary">Log sale</button>
     </form>
@@ -1205,6 +1254,7 @@ function renderSaleForm(){
 }
 
 // The payout summary cards + the three partner cards, shown on the Overview.
+function moneyTrail(p){ return (proofReady && remitsReady) ? `<div class="trail"><div class="label" style="margin-bottom:8px;">Money received by this partner</div>${payStatsHtml(partnerMoney(p))}</div>` : ''; }
 function payoutBlocks(t){
   const role = "Partner";
   const cards = PARTNERS.map(p=>{
@@ -1215,12 +1265,14 @@ function payoutBlocks(t){
         <div class="role">${role}</div>
         <div class="amt">${money(t.perPartner)}</div>
         <div class="split">Juancho: ${money(half)} · Javi: ${money(half)}</div>
+        ${moneyTrail(p)}
       </div>`;
     }
     return `<div class="payout-card">
       <div class="name">${p}</div>
       <div class="role">${role}</div>
       <div class="amt">${money(t.perPartner)}</div>
+      ${moneyTrail(p)}
     </div>`;
   }).join('');
   return `
@@ -1289,8 +1341,10 @@ function editFormHtml(s){
             <div class="field"><label>Amount paid so far (<span class="peso">₱</span>)</label><input type="number" min="0" step="any" id="editPaid-${s.id}" value="${paid}"></div>
             <div class="field"><label>Sale total (<span class="peso">₱</span>)</label><input type="text" id="editTotal-${s.id}" value="${Number(s.total).toFixed(2)}" readonly></div>
           </div>
+          ${paymentFieldsHtml('pay' + s.id, s)}
           <div class="delete-confirm">
-            <input type="password" class="pin-input" id="editSavePin-${s.id}" placeholder="PIN to confirm save" inputmode="numeric">
+            ${rememberHtml('editRem-' + s.id).replace('class="remember"', 'class="remember" style="width:100%;order:3;"')}
+            <input type="password" class="pin-input" data-pin-field id="editSavePin-${s.id}" placeholder="PIN to confirm save" inputmode="numeric">
             <button type="button" class="btn-edit-save" data-id="${s.id}">Save changes</button>
             <button type="button" class="btn-cancel-text btn-edit-cancel" data-id="${s.id}">Cancel</button>
             <div class="error" id="editSaveErr-${s.id}"></div>
@@ -1306,25 +1360,26 @@ function renderSalesLog(){
     const invRow = state.inventory.find(r => r.code === s.skuCode);
     // Pre-computed, accent-free, lower-case text the live search matches against (customer is also kept on its own to rank first).
     const custText = normText(s.customer);
-    const allText = normText([s.customer, s.skuName, invRow ? plainName(invRow) : '', s.skuCode, s.soldBy, s.channel].join(' '));
+    const allText = normText([s.customer, s.skuName, invRow ? plainName(invRow) : '', s.skuCode, s.soldBy, s.channel, s.paymentRef, s.paymentMethod, s.paidTo].join(' '));
     return `
     <div class="activity-item" data-i="${i}" data-sid="${s.id}" data-cust="${esc(custText)}" data-hay="${esc(allText)}">
       <div class="avatar">${initials(s.soldBy)}</div>
       <div class="activity-body">
         <div class="activity-view" id="view-${s.id}">
-          <div>${s.qty}x ${invRow ? paddleHtml(invRow) : esc(s.skuName)} to <strong>${esc(s.customer)}</strong> (${money(s.total)}${s.priceTier ? ' · ' + esc(s.priceTier) : ''})${invRow ? ` <span class="badge batch">Batch ${invRow.batch}</span>` : ''}</div>
+          <div>${s.qty}x ${invRow ? paddleHtml(invRow) : esc(s.skuName)} to <strong>${esc(s.customer)}</strong> (${money(s.total)}${s.priceTier ? ' · ' + esc(s.priceTier) : ''})${invRow ? ` <span class="badge batch">Batch ${invRow.batch}</span>` : ''}${payChips(s)}</div>
           <div class="meta">${s.soldBy} · ${new Date(s.createdAt || s.date).toLocaleString()}</div>
         </div>
 
         <div class="delete-confirm" id="delConfirm-${s.id}" style="display:none;">
-          <input type="password" class="pin-input" id="delPin-${s.id}" placeholder="PIN to confirm delete" inputmode="numeric">
+          <input type="password" class="pin-input" data-pin-field id="delPin-${s.id}" placeholder="PIN to confirm delete" inputmode="numeric">
+          ${rememberHtml('delRem-' + s.id).replace('class="remember"', 'class="remember" style="width:100%;order:3;"')}
           <button type="button" class="btn-delete-confirm" data-id="${s.id}">Delete</button>
           <button type="button" class="btn-delete-cancel" data-id="${s.id}">Cancel</button>
           <div class="error" id="delErr-${s.id}"></div>
         </div>
 
         <div class="delete-confirm" id="editGate-${s.id}" style="display:none;">
-          <input type="password" class="pin-input" id="editGatePin-${s.id}" placeholder="PIN to edit" inputmode="numeric">
+          <input type="password" class="pin-input" data-pin-field id="editGatePin-${s.id}" placeholder="PIN to edit" inputmode="numeric">
           <button type="button" class="btn-editgate-confirm" data-id="${s.id}">Continue</button>
           <button type="button" class="btn-cancel-text btn-editgate-cancel" data-id="${s.id}">Cancel</button>
           <div class="error" id="editGateErr-${s.id}"></div>
@@ -1338,9 +1393,9 @@ function renderSalesLog(){
       </div>
     </div>
   `;}).join('');
-  return `<h2>Sales</h2><p class="section-desc">Every sale as it is recorded. Search by customer, paddle, seller or channel.</p>
+  return `<h2>Sales</h2><p class="section-desc">Every sale as it is recorded. Search by customer, paddle, seller, channel or reference number.</p>
     <div class="search-wrap">
-      <input type="text" id="salesSearch" value="${esc(salesSearch)}" placeholder="Search customer, paddle, seller or channel" aria-label="Search sales"
+      <input type="text" id="salesSearch" value="${esc(salesSearch)}" placeholder="Search customer, paddle, seller, channel or reference" aria-label="Search sales"
         autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="search" enterkeyhint="search">
       <button type="button" class="search-clear" id="salesSearchClear" aria-label="Clear search" style="display:none;">×</button>
     </div>
@@ -1470,6 +1525,13 @@ function wireEditForm(s){
   price.oninput = ()=> syncTotal(true);
   status.onchange = ()=> syncTotal(true);   // choosing Paid fills amount paid with the total
   refreshUi(false);
+  if(document.getElementById('pay' + s.id + '_box')){
+    const soldInput = $('editSoldby');
+    const getPaid = () => status.value === 'Paid' ? (parseFloat(total.value) || 0) : (parseFloat(paid.value) || 0);
+    const recvFor = () => PARTNERS.includes((soldInput.value || '').trim()) ? soldInput.value.trim() : (s.receivedBy || (PARTNERS.includes(currentUser) ? currentUser : PARTNERS[0]));
+    const paySync = wirePayment('pay' + s.id, getPaid, recvFor, () => isNewSale(s));
+    ['input', 'change'].forEach(ev => document.getElementById('editForm-' + s.id).addEventListener(ev, () => setTimeout(paySync, 0)));
+  }
 }
 
 function attachHandlers(){
@@ -1539,6 +1601,12 @@ function attachHandlers(){
     qtyInput.oninput = refreshTier;
     refreshTier();
   }
+  if(document.getElementById('payf_box')){
+    const paidInput = document.getElementById('f_paid'), soldSel = document.getElementById('f_soldby');
+    const recvFor = () => PARTNERS.includes(soldSel.value) ? soldSel.value : (PARTNERS.includes(currentUser) ? currentUser : PARTNERS[0]);
+    const paySync = wirePayment('payf', () => parseFloat(paidInput.value || 0) || 0, recvFor, () => true);
+    ['input', 'change'].forEach(ev => document.getElementById('saleForm').addEventListener(ev, () => setTimeout(paySync, 0)));
+  }
   const soldBySel = document.getElementById('f_soldby');
   if(soldBySel){
     soldBySel.onchange = ()=>{
@@ -1560,6 +1628,8 @@ function attachHandlers(){
     if(view) view.style.display = 'block';
   }
 
+  document.querySelectorAll('.proof-chip').forEach(b => { b.onclick = () => openProof(b.dataset.path); });
+  document.querySelectorAll('[data-lock]').forEach(b => { b.onclick = lockDevice; });
   document.querySelectorAll('.btn-delete-trigger').forEach(btn=>{
     btn.onclick = ()=>{
       const id = btn.dataset.id;
@@ -1580,16 +1650,18 @@ function attachHandlers(){
       const id = btn.dataset.id;
       const pinInput = document.getElementById('delPin-' + id);
       const errBox = document.getElementById('delErr-' + id);
-      const pin = pinInput ? pinInput.value : '';
+      const pin = (pinInput && pinInput.value) || savedPin();
       if(errBox) errBox.innerHTML = '';
       if(!pin){ if(errBox) errBox.innerHTML = '<div class="error">Enter the PIN.</div>'; return; }
+      if(remittedIds().has(String(id))){ if(errBox) errBox.innerHTML = '<div class="error">This sale is covered by a remit, so it cannot be deleted.</div>'; return; }
       btn.disabled = true;
       const ok = await deleteSale(id, pin);
       btn.disabled = false;
       if(!ok){
-        if(errBox) errBox.innerHTML = '<div class="error">Incorrect PIN.</div>';
+        if(errBox) errBox.innerHTML = '<div class="error">Incorrect PIN.' + forgetIfSaved(!!(pinInput && pinInput.value)) + '</div>';
         return;
       }
+      maybeRemember('delRem-' + id, pin);
       showToast('Sale deleted');
       render();
     };
@@ -1616,7 +1688,7 @@ function attachHandlers(){
       const pinInput = document.getElementById('editGatePin-' + id);
       const errBox = document.getElementById('editGateErr-' + id);
       if(errBox) errBox.innerHTML = '';
-      if(!pinInput || !pinInput.value){ if(errBox) errBox.innerHTML = '<div class="error">Enter the PIN.</div>'; return; }
+      if(!savedPin() && (!pinInput || !pinInput.value)){ if(errBox) errBox.innerHTML = '<div class="error">Enter the PIN.</div>'; return; }
       // This first PIN entry just unlocks the edit form — it is not verified
       // against the database yet. The real check happens on Save, via the
       // UPDATE RLS policy, using the PIN entered there.
@@ -1645,7 +1717,8 @@ function attachHandlers(){
       const soldBy = document.getElementById('editSoldby-' + id).value.trim();
       const status = document.getElementById('editStatus-' + id).value;
       const paidTyped = parseFloat(document.getElementById('editPaid-' + id).value || 0);
-      const pin = document.getElementById('editSavePin-' + id).value;
+      const pin = pinValue('editSavePin-' + id);
+      const typedPin = !!document.getElementById('editSavePin-' + id).value;
 
       if(!GROUPS.includes(group)){ fail('Choose a paddle.'); return; }
       if(!qty || qty < 1){ fail('Enter a valid quantity.'); return; }
@@ -1686,10 +1759,37 @@ function attachHandlers(){
       // "After" snapshot for the change list / History: the whole sale, even if part of it moved to another batch.
       const next = {...sale, skuCode: plan.main.row.code, skuName: plan.main.row.name, qty, unitPrice: mainUnit,
                     total: grandTotal, customer, channel, soldBy, status, paid: paidTotal, priceTier: tierLabel};
+      // Payment proof. Required when money was paid on a sale created after proof tracking started, or when this edit
+      // creates a new row (overflow to another batch) that has money on it. Older sales can add it, but don't have to.
+      const payKey = 'pay' + id;
+      const extraPaid = partPaid.slice(1).some(x => x > 0);
+      let pay = {none: true};
+      if(proofReady){
+        pay = readPayment(payKey, {required: paidTotal > 0 && (isNewSale(sale) || extraPaid), existing: sale});
+        if(pay.error){ fail(pay.error); return; }
+        if(pay.fields && paidTotal <= 0) pay = {none: true};
+        if(pay.fields && pay.fields.payment_ref){
+          const owner = findRefOwner(pay.fields.payment_ref, sale);
+          if(owner){ fail(refTakenMsg(owner)); return; }
+        }
+        if(pay.fields){
+          Object.assign(next, {paymentMethod: pay.fields.payment_method, paymentRef: pay.fields.payment_ref || '', paidTo: pay.fields.paid_to,
+            receivedBy: pay.fields.received_by || '', proofPath: pay.cash ? '' : (pay.blob ? '(new photo)' : sale.proofPath)});
+        }
+      }
       if(!diffSale(sale, next).length){ fail('No changes to save.'); return; }
+      let newPath = null;
+      if(pay.fields && pay.blob){
+        try{ newPath = await uploadProof('sales', pay.blob, pin); }
+        catch(ex){ fail(describeUploadError(ex) + forgetIfSaved(typedPin)); return; }
+      }
+      const proofAtIso = new Date().toISOString();
+      const finalPath = pay.fields ? (pay.cash ? null : (newPath || sale.proofPath || null)) : null;
+      if(pay.fields) next.proofPath = finalPath || '';
 
       const rowFields = (p, i)=>({ sku_code: p.row.code, paddle_name: p.row.name, qty: p.qty, unit_price: unitFor(p.row),
-        total: partTotals[i], customer, channel, sold_by: soldBy, status, amount_paid: partPaid[i] });
+        total: partTotals[i], customer, channel, sold_by: soldBy, status, amount_paid: partPaid[i],
+        ...payColsFor(pay, finalPath, newPath ? proofAtIso : (sale.proofAt || null), i) });
       const changes = rowFields(parts[0], 0);
       if(tierLabel !== '' || sale.priceTier) changes.price_tier = tierLabel || null;   // an untouched tier-less sale stays untouched
       const extraInserts = parts.slice(1).map((p, i) => ({date: sale.date, ...rowFields(p, i + 1), price_tier: tierLabel || null}));
@@ -1700,9 +1800,12 @@ function attachHandlers(){
       const res = await updateSale(id, changes, pin, {extraInserts, auditNext: autoSplit ? {...next, autoSplit} : next});
       btn.disabled = false;
       if(!res.ok){
-        fail(res.reason === 'pin' ? 'Incorrect PIN.' : describeSubmitError(res.error, 'save the changes'));
+        if(newPath) await removeProof(newPath, pin);
+        fail(res.reason === 'pin' ? 'Incorrect PIN.' + forgetIfSaved(typedPin) : describeSubmitError(res.error, 'save the changes'));
         return;
       }
+      maybeRemember('editRem-' + id, pin);
+      delete pendingProof[payKey];
       showToast(parts.length > 1 ? 'Sale updated — split across batches' : 'Sale updated');
       render();
     };
@@ -1731,7 +1834,8 @@ function attachHandlers(){
       const ambName = document.getElementById('f_ambname').value.trim();
       const status = document.getElementById('f_status').value;
       const paid = parseFloat(document.getElementById('f_paid').value || 0);
-      const pin = document.getElementById('f_pin').value;
+      const pin = pinValue('f_pin');
+      const typedPin = !!document.getElementById('f_pin').value;
 
       if(!qty || qty < 1){ errBox.innerHTML = '<div class="error">Enter a valid quantity.</div>'; return; }
       if(tierKey !== 'cost' && (!sharedUnitPrice || sharedUnitPrice <= 0)){ errBox.innerHTML = '<div class="error">Enter a valid price.</div>'; return; }
@@ -1742,6 +1846,9 @@ function attachHandlers(){
       }
       if(!pin){ errBox.innerHTML = '<div class="error">Enter the access PIN.</div>'; return; }
       if(!groupRows(group).length){ errBox.innerHTML = '<div class="error">Choose a paddle.</div>'; return; }
+      // Money paid means proof is needed (method, who it was paid to, reference and image; cash needs neither reference nor image).
+      const pay = proofReady ? readPayment('payf', {required: paid > 0, existing: null}) : {none: true};
+      if(pay.error){ errBox.innerHTML = `<div class="error">${pay.error}</div>`; return; }
 
       const submitBtn = form.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
@@ -1755,6 +1862,10 @@ function attachHandlers(){
         return;
       }
 
+      if(pay.fields && pay.fields.payment_ref){
+        const owner = findRefOwner(pay.fields.payment_ref, null);
+        if(owner){ submitBtn.disabled = false; errBox.innerHTML = `<div class="error">${refTakenMsg(owner)}</div>`; return; }
+      }
       // Oldest received batch first (demo units and not-yet-received paddles are never used).
       const plan = allocateFifo(group, qty);
       if(plan.short > 0){
@@ -1769,6 +1880,12 @@ function attachHandlers(){
       // Amount paid is split across the rows in proportion to each row's value (which is the same as by units
       // whenever the unit price is the same); the last row takes any rounding remainder.
       let paidLeft = paidTotal;
+      let proofPath = null;
+      if(pay.fields && pay.blob && paidTotal > 0){
+        try{ proofPath = await uploadProof('sales', pay.blob, pin); }
+        catch(ex){ submitBtn.disabled = false; errBox.innerHTML = `<div class="error">${describeUploadError(ex)}${forgetIfSaved(typedPin)}</div>`; return; }
+      }
+      const proofAtIso = new Date().toISOString();
       const rowsToInsert = plan.parts.map((p, i)=>{
         const isLast = i === plan.parts.length - 1;
         const share = isLast ? round2(paidLeft) : round2(grandTotal > 0 ? paidTotal * partTotals[i] / grandTotal : 0);
@@ -1778,7 +1895,8 @@ function attachHandlers(){
           qty: p.qty, unit_price: unitFor(p.row), total: partTotals[i], customer, channel,
           sold_by: soldBy, status, amount_paid: share,
           price_tier: priceTier,
-          access_code: pin
+          access_code: pin,
+          ...(paidTotal > 0 ? payColsFor(pay, proofPath, proofAtIso, i) : {})
         };
       });
 
@@ -1800,9 +1918,12 @@ function attachHandlers(){
       submitBtn.disabled = false;
 
       if(error){
-        errBox.innerHTML = `<div class="error">${describeSubmitError(error)}</div>`;
+        if(proofPath) await removeProof(proofPath, pin);
+        errBox.innerHTML = `<div class="error">${describeSubmitError(error)}${error.code === '42501' ? forgetIfSaved(typedPin) : ''}</div>`;
         return;
       }
+      maybeRemember('f_rem', pin);
+      delete pendingProof.payf;
 
       (data || []).forEach(r => state.sales.push(rowToSale(r)));
       recomputeInventory();
@@ -1825,9 +1946,394 @@ function attachHandlers(){
   }
 }
 
+// =====================================================================================================
+//  PROOF OF PAYMENT, REMITS, "REMEMBER THIS DEVICE"
+// =====================================================================================================
+// ---- Remember this device -------------------------------------------------------------------------
+// When "Remember this device" is ticked after a PIN that worked, this is stored in this browser's localStorage:
+//   key  hpp_unlock   value  {"pin":"<the PIN as typed>","exp":<timestamp 30 days ahead>}
+// It is plain text (the database needs the PIN on every save). "Lock" deletes it. It expires on its own after 30 days.
+const PIN_KEY = 'hpp_unlock';
+const PIN_DAYS = 30;
+function savedPin(){
+  try{
+    const o = JSON.parse(localStorage.getItem(PIN_KEY) || 'null');
+    if(o && o.pin && o.exp > Date.now()) return String(o.pin);
+    if(o) localStorage.removeItem(PIN_KEY);
+  }catch(e){}
+  return '';
+}
+function rememberPin(pin){
+  try{ localStorage.setItem(PIN_KEY, JSON.stringify({pin, exp: Date.now() + PIN_DAYS * 864e5})); }catch(e){}
+  refreshPinUi();
+}
+function clearSavedPin(){ try{ localStorage.removeItem(PIN_KEY); }catch(e){} refreshPinUi(); }
+function lockDevice(){ clearSavedPin(); showToast('Locked. The PIN is forgotten on this device.'); }
+// What was typed wins; otherwise the remembered PIN.
+function pinValue(inputId){ const el = document.getElementById(inputId); return (el && el.value) || savedPin(); }
+function maybeRemember(checkId, pin){ const c = document.getElementById(checkId); if(c && c.checked && pin) rememberPin(pin); }
+// If a remembered PIN was the one rejected, forget it so the PIN box comes back.
+function forgetIfSaved(typedAnything){
+  if(!typedAnything && savedPin()){ clearSavedPin(); return ' Your remembered PIN no longer works and was cleared. Enter the PIN again.'; }
+  return '';
+}
+function refreshPinUi(){
+  const on = !!savedPin();
+  document.querySelectorAll('[data-pin-field]').forEach(el => { el.style.display = on ? 'none' : ''; });
+  document.querySelectorAll('[data-pin-note]').forEach(el => { el.style.display = on ? '' : 'none'; });
+  const lb = document.getElementById('lockBtn'); if(lb) lb.style.display = on ? '' : 'none';
+}
+const REMEMBER_LABEL = 'Remember this device for 30 days';
+const rememberHtml = (id) => `<label class="remember" data-pin-field><input type="checkbox" id="${id}"> ${REMEMBER_LABEL}</label>`;
+
+// ---- Data: payment columns, remits ----------------------------------------------------------------
+const PAY_METHODS = ['Cash','GCash','BPI','GoTyme','BDO','UnionBank','Other'];
+// Sales created on or after this need payment proof when money was paid. Keep it the same day the SQL is run.
+const PROOF_REQUIRED_FROM = '2026-11-09T00:00:00+08:00';
+let remitsReady = true;
+state.remits = []; state.remitLinks = [];
+function isNewSale(s){ const t = new Date(s.createdAt || s.date); return !isNaN(t) && t >= new Date(PROOF_REQUIRED_FROM); }
+function remittedIds(){ return new Set(state.remitLinks.map(l => String(l.sale_id))); }
+function baseRef(r){ return String(r || '').replace(/\s*·\s*part\s*\d+$/i, '').trim(); }
+function findRefOwner(ref, except){
+  const key = normText(baseRef(ref)).trim();
+  if(!key) return null;
+  return state.sales.find(o => o.paymentRef && normText(baseRef(o.paymentRef)).trim() === key
+    && !(except && (String(o.id) === String(except.id) || (except.proofPath && o.proofPath === except.proofPath)))) || null;
+}
+const refTakenMsg = (o) => `That reference is already used by the sale to ${o.customer} on ${o.date}.`;
+async function loadRemits(){
+  try{
+    const a = await supabaseClient.from('remits').select('id,partner,amount,remit_date,reference,proof_path,note,created_at').order('created_at', {ascending: false});
+    if(a.error) throw a.error;
+    const b = await supabaseClient.from('remit_sales').select('remit_id,sale_id');
+    if(b.error) throw b.error;
+    state.remits = a.data || []; state.remitLinks = b.data || []; remitsReady = true;
+  }catch(e){ remitsReady = false; state.remits = []; state.remitLinks = []; }
+}
+// Money a partner collected, handed over, and still holds. Only sales logged with "Paid to: Partner" count.
+function partnerMoney(p){
+  const rows = state.sales.filter(s => s.paidTo === 'Partner' && s.receivedBy === p && s.paid > 0);
+  const linked = remittedIds();
+  const collected = rows.reduce((a, s) => a + (+s.paid || 0), 0);
+  const remitted = state.remits.filter(r => r.partner === p).reduce((a, r) => a + (+r.amount || 0), 0);
+  const cash = rows.filter(s => s.paymentMethod === 'Cash' && !linked.has(String(s.id))).reduce((a, s) => a + (+s.paid || 0), 0);
+  return {collected, remitted, left: collected - remitted, cash};
+}
+function payChips(s){
+  if(!(s.paid > 0) || !s.paymentMethod) return '';
+  const done = remittedIds().has(String(s.id));
+  let h = ` <span class="badge batch">${esc(s.paymentMethod)}</span>`;
+  if(s.paymentMethod === 'Cash') h += done ? ' <span class="badge paid">Cash, remitted</span>' : ' <span class="badge pending">Cash, not yet remitted</span>';
+  else if(s.paidTo === 'Honolulu account') h += ' <span class="badge paid">Honolulu account</span>';
+  else if(s.paidTo === 'Partner') h += done ? ' <span class="badge paid">Remitted</span>' : ' <span class="badge pending">To remit</span>';
+  if(s.proofPath) h += ` <button type="button" class="chip proof-chip" data-path="${esc(s.proofPath)}">Proof</button>`;
+  return h;
+}
+
+// ---- Photos: camera / gallery, compressed to JPEG in the browser -----------------------------------
+const pendingProof = {};   // key -> {blob, url, size}. Kept in memory until the save works, so a failed save doesn't lose the photo.
+function kb(n){ return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+function compressImage(file){
+  return new Promise((resolve, reject) => {
+    if(file.size > 40 * 1048576){ reject(new Error('too-big')); return; }
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      try{
+        const sc = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * sc)), h = Math.max(1, Math.round(img.naturalHeight * sc));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+        c.toBlob(b => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error('decode')); }, 'image/jpeg', 0.7);
+      }catch(e){ URL.revokeObjectURL(url); reject(new Error('decode')); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+    img.src = url;
+  });
+}
+function proofPickerHtml(k, label){
+  return `<div class="field" id="${k}_fileF"><label>${label || 'Proof image'}</label>
+    <div class="pick-btns">
+      <button type="button" class="btn btn-grey" id="${k}_cam">Take photo</button>
+      <button type="button" class="btn btn-grey" id="${k}_gal">Choose from gallery</button>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="${k}_fileCam" class="vh" tabindex="-1" aria-label="Take photo">
+    <input type="file" accept="image/*" id="${k}_fileGal" class="vh" tabindex="-1" aria-label="Choose from gallery">
+    <a href="#" class="help-link" id="${k}_helpL">Can't open the camera or gallery?</a>
+    <div class="help-box" id="${k}_help" style="display:none;"><ol>
+      <li>The first time you tap Take photo, your phone asks for camera access. Tap Allow.</li>
+      <li>If you tapped Don't Allow before, open Settings, find Safari (or the Honolulu app, if you added it to the Home Screen), allow Camera and Photos, then reload this page.</li>
+      <li>Or take a screenshot of the receipt first, then use Choose from gallery.</li>
+    </ol></div>
+    <div class="proof-prev" id="${k}_prev"></div>
+    <div class="error" id="${k}_pickErr"></div></div>`;
+}
+function renderPickPreview(k, savedNote){
+  const prev = document.getElementById(k + '_prev'); if(!prev) return;
+  const p = pendingProof[k];
+  if(p){
+    prev.innerHTML = `<img src="${p.url}" alt="Photo preview"><div class="prev-row"><span class="sku">JPEG · ${kb(p.size)}</span><button type="button" class="btn-cancel-text" id="${k}_rm">Remove</button></div>`;
+    document.getElementById(k + '_rm').onclick = () => { URL.revokeObjectURL(p.url); delete pendingProof[k]; renderPickPreview(k, savedNote); };
+  } else prev.innerHTML = savedNote ? `<div class="hint">${savedNote}</div>` : '';
+}
+function wireProofPicker(k, savedNote){
+  const $ = n => document.getElementById(k + '_' + n); if(!$('cam')) return;
+  const err = $('pickErr');
+  const take = async (file) => {
+    err.textContent = '';
+    if(!file) return;
+    try{
+      const blob = await compressImage(file);
+      if(pendingProof[k]) URL.revokeObjectURL(pendingProof[k].url);
+      pendingProof[k] = {blob, url: URL.createObjectURL(blob), size: blob.size};
+      renderPickPreview(k, savedNote);
+    }catch(e){
+      err.textContent = e.message === 'too-big' ? 'That file is too large (over 40 MB). Take a new photo or a screenshot.'
+        : "Couldn't read that photo. Try Choose from gallery, or take a screenshot of the receipt first.";
+    }
+  };
+  $('cam').onclick = () => { $('fileCam').value = ''; $('fileCam').click(); };
+  $('gal').onclick = () => { $('fileGal').value = ''; $('fileGal').click(); };
+  $('fileCam').onchange = () => take($('fileCam').files[0]);
+  $('fileGal').onchange = () => take($('fileGal').files[0]);
+  $('helpL').onclick = (ev) => { ev.preventDefault(); const h = $('help'); h.style.display = h.style.display === 'none' ? 'block' : 'none'; };
+  renderPickPreview(k, savedNote);
+}
+function pinClientFor(pin){
+  return window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {global: {headers: {'x-pin': pin}}, auth: {persistSession: false, autoRefreshToken: false}});
+}
+async function uploadProof(folder, blob, pin){
+  const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2);
+  const path = `${folder}/${id}.jpg`;
+  const { error } = await pinClientFor(pin).storage.from('proofs').upload(path, blob, {contentType: 'image/jpeg', upsert: false});
+  if(error) throw error;
+  return path;
+}
+async function removeProof(path, pin){ try{ await pinClientFor(pin).storage.from('proofs').remove([path]); }catch(e){} }
+// The real reason an upload failed, in plain words.
+function describeUploadError(e){
+  const m = String((e && (e.message || e.error || e.statusCode)) || e || '').toLowerCase();
+  if(navigator.onLine === false || m.includes('failed to fetch') || m.includes('network') || m.includes('load failed') || m.includes('timeout'))
+    return "Couldn't upload the photo: you look offline. Check your connection and tap save again. Your form and photo are still here.";
+  if(m.includes('exceed') || m.includes('too large') || m.includes('413') || m.includes('maximum'))
+    return "Couldn't upload the photo: it is too large (the limit is 5 MB). Remove it and add a smaller one.";
+  if(m.includes('row-level security') || m.includes('policy') || m.includes('unauthorized') || m.includes('403'))
+    return "Couldn't upload the photo: not allowed. Check the PIN. If the PIN is right, the storage setup (the SQL step) may not be finished.";
+  if(m.includes('mime') || m.includes('invalid') ) return "Couldn't upload the photo: it isn't a JPEG. Remove it and add it again.";
+  return `Couldn't upload the photo (${(e && e.message) || 'unknown error'}). Your form and photo are still here.`;
+}
+
+// ---- Payment fields (Log a sale and Edit) ---------------------------------------------------------
+function paymentFieldsHtml(k, s){
+  if(!proofReady) return '';
+  s = s || {};
+  const m = s.paymentMethod || '', pt = s.paidTo || '';
+  const saved = s.proofPath ? 'A proof is already saved. Add a new photo only to replace it.' : '';
+  return `<div class="pay-box" id="${k}_box" style="display:none;">
+    <div class="pay-title">Payment proof</div>
+    <div class="row2">
+      <div class="field"><label>Payment method</label><select id="${k}_method"><option value="">Select</option>${PAY_METHODS.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+      <div class="field"><label>Paid to</label><select id="${k}_to"><option value="">Select</option><option ${pt === 'Honolulu account' ? 'selected' : ''}>Honolulu account</option><option ${pt === 'Partner' ? 'selected' : ''}>Partner</option></select></div>
+    </div>
+    <div class="field" id="${k}_recvF" style="display:none;"><label>Received by</label><select id="${k}_recv">${PARTNERS.map(p => `<option ${p === (s.receivedBy || '') ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
+    <div class="field" id="${k}_refF"><label>Reference number</label><input type="text" id="${k}_ref" value="${esc(baseRef(s.paymentRef))}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+    ${proofPickerHtml(k, 'Proof image')}
+    <div class="hint" id="${k}_note"></div>
+    <div class="error" id="${k}_err"></div>
+  </div><span data-saved-note="${k}" hidden>${esc(saved)}</span>`;
+}
+// Shows the box when money was paid and keeps the fields in step. getPaid() returns the amount paid so far.
+function wirePayment(k, getPaid, getRecv, isRequired){
+  const $ = n => document.getElementById(k + '_' + n), box = $('box');
+  if(!box) return () => {};
+  const noteEl = document.querySelector(`[data-saved-note="${k}"]`);
+  wireProofPicker(k, noteEl ? noteEl.textContent : '');
+  const sync = () => {
+    box.style.display = (getPaid() > 0) ? 'block' : 'none';
+    const to = $('to').value, method = $('method').value, cash = method === 'Cash';
+    $('recvF').style.display = (to === 'Partner' || cash) ? 'block' : 'none';
+    $('refF').style.display = $('fileF').style.display = cash ? 'none' : 'block';
+    const req = isRequired() ? 'Required for this sale. ' : 'Optional for this older sale. ';
+    $('note').textContent = req + (cash ? 'Cash is recorded as received by the partner and shows as "Cash, not yet remitted" until a remit covers it.'
+      : (to === 'Honolulu account' ? 'The customer paid the Honolulu BPI account directly. Counts as remitted automatically.'
+      : (to === 'Partner' ? 'A partner received it. It needs a remit later.' : '')));
+  };
+  $('method').onchange = () => { if($('method').value === 'Cash') $('to').value = 'Partner'; if(!$('recv').value) $('recv').value = getRecv(); sync(); };
+  $('to').onchange = () => { if($('to').value === 'Honolulu account') $('method').value = 'BPI'; sync(); };
+  if(!$('recv').value) $('recv').value = getRecv();
+  sync();
+  return sync;
+}
+// Reads and checks the payment fields. Returns {none:true}, {error}, or {fields, blob, cash}.
+function readPayment(k, opt){
+  if(!proofReady || !document.getElementById(k + '_box')) return {none: true};
+  const $ = n => document.getElementById(k + '_' + n);
+  const method = $('method').value; let to = $('to').value;
+  const recv = $('recv').value, ref = $('ref').value.trim(), pend = pendingProof[k];
+  if(!opt.required && !method && !to) return {none: true};
+  if(!method) return {error: 'Choose how it was paid.'};
+  const cash = method === 'Cash';
+  if(cash) to = 'Partner';
+  if(!to) return {error: 'Choose who it was paid to.'};
+  if(to === 'Honolulu account' && cash) return {error: 'Cash cannot be paid to the Honolulu account.'};
+  if(to === 'Partner' && !recv) return {error: 'Choose which partner received it.'};
+  if(!cash){
+    if(!ref) return {error: 'Enter the reference number.'};
+    if(!pend && !(opt.existing && opt.existing.proofPath)) return {error: 'Add the proof image (Take photo or Choose from gallery).'};
+  }
+  return {fields: {payment_method: method, paid_to: to, received_by: to === 'Partner' ? recv : null, payment_ref: cash ? null : ref}, blob: cash ? null : (pend ? pend.blob : null), cash};
+}
+// Fills the payment columns for row i of a (possibly split) sale. Split rows get "ref · part 2" so the reference stays unique.
+function payColsFor(pay, path, atIso, i){
+  if(!pay || !pay.fields) return {};
+  const f = pay.fields;
+  return {payment_method: f.payment_method, paid_to: f.paid_to, received_by: f.received_by,
+    payment_ref: f.payment_ref ? (i === 0 ? f.payment_ref : `${f.payment_ref} · part ${i + 1}`) : null,
+    proof_path: pay.cash ? null : path, proof_at: pay.cash ? null : atIso};
+}
+
+// ---- Proof viewer (private images need the PIN) ---------------------------------------------------
+async function openProof(path){
+  const m = document.getElementById('proofModal'), body = m.querySelector('.pm-body');
+  m.style.display = 'flex';
+  const show = async (pin, rememberIt) => {
+    body.innerHTML = '<div class="hint">Loading the proof...</div>';
+    let res; try{ res = await pinClientFor(pin).storage.from('proofs').createSignedUrl(path, 120); }catch(e){ res = {error: e}; }
+    if(res.error || !res.data){ return false; }
+    body.innerHTML = `<img src="${res.data.signedUrl}" alt="Payment proof">`;
+    if(rememberIt) rememberPin(pin);
+    return true;
+  };
+  const ask = (msg) => {
+    body.innerHTML = `<div class="field"><label>PIN to view</label><input type="password" id="pmPin" inputmode="numeric" placeholder="Enter the PIN"></div>
+      <label class="remember"><input type="checkbox" id="pmRem"> ${REMEMBER_LABEL}</label>
+      <div class="error" id="pmErr">${msg || ''}</div><button type="button" class="primary" id="pmGo" style="margin-top:12px;">View proof</button>`;
+    document.getElementById('pmGo').onclick = async () => {
+      const pin = document.getElementById('pmPin').value;
+      if(!pin){ document.getElementById('pmErr').textContent = 'Enter the PIN.'; return; }
+      const ok = await show(pin, document.getElementById('pmRem').checked);
+      if(!ok) ask("Couldn't open the proof. Check the PIN, or the proof may have been removed.");
+    };
+  };
+  const pin = savedPin();
+  if(pin){ const ok = await show(pin, false); if(!ok){ clearSavedPin(); ask('Your remembered PIN did not work and was cleared. Enter the PIN.'); } }
+  else ask('');
+}
+function closeProof(){ const m = document.getElementById('proofModal'); m.style.display = 'none'; m.querySelector('.pm-body').innerHTML = ''; }
+
+// ---- Remits tab -----------------------------------------------------------------------------------
+function unremittedFor(p){
+  const linked = remittedIds();
+  return state.sales.filter(s => s.paidTo === 'Partner' && s.receivedBy === p && s.paid > 0 && !linked.has(String(s.id)));
+}
+function renderRemits(){
+  if(!proofReady || !remitsReady){
+    return `<h2>Remits</h2><div class="nothing">Remits are not set up yet. Run the SQL block in Supabase, then reload this page.</div>`;
+  }
+  const defPartner = PARTNERS.includes(currentUser) ? currentUser : PARTNERS[0];
+  const stats = PARTNERS.map(p => { const m = partnerMoney(p); return `<div class="payout-card"><div class="name">${esc(p)}</div>${payStatsHtml(m)}</div>`; }).join('');
+  const sum = id => state.remitLinks.filter(l => l.remit_id === id).map(l => state.sales.find(s => String(s.id) === String(l.sale_id))).filter(Boolean);
+  const past = state.remits.length ? state.remits.map(r => {
+    const covered = sum(r.id), total = covered.reduce((a, s) => a + (+s.paid || 0), 0), diff = Math.round((+r.amount - total) * 100) / 100;
+    return `<tr><td class="mono" style="font-size:12px;">${esc(String(r.remit_date))}</td><td>${esc(r.partner)}</td><td class="num">${money(r.amount)}</td>
+      <td><span class="sku">${esc(r.reference)}</span></td><td>${covered.length} sale${covered.length === 1 ? '' : 's'}</td>
+      <td>${diff === 0 ? '<span class="badge paid">Matches</span>' : `<span class="badge pending">${diff > 0 ? 'Over' : 'Short'} ${money(Math.abs(diff))}</span>`}</td>
+      <td>${r.proof_path ? `<button type="button" class="chip proof-chip" data-path="${esc(r.proof_path)}">Proof</button>` : ''}</td>
+      <td style="white-space:normal;color:var(--text-2);">${esc(r.note || '')}</td></tr>`;
+  }).join('') : `<tr><td colspan="8" style="color:var(--text-3);">No remits yet.</td></tr>`;
+  return `
+    <h2>Remits</h2>
+    <p class="section-desc">A partner logs money handed to the company, and ticks the sales it covers.</p>
+    <div class="payout-grid" style="margin-top:0;margin-bottom:24px;">${stats}</div>
+    <form id="remitForm">
+      <div class="row2">
+        <div class="field"><label>Partner</label><select id="rm_partner">${PARTNERS.map(p => `<option ${p === defPartner ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
+        <div class="field"><label>Amount (<span class="peso">₱</span>)</label><input type="number" id="rm_amount" min="0" step="any" inputmode="decimal"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Date</label><input type="date" id="rm_date" value="${today()}"></div>
+        <div class="field"><label>Reference number</label><input type="text" id="rm_ref" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      </div>
+      ${proofPickerHtml('rm', 'Transfer screenshot')}
+      <div class="field"><label>Note (optional)</label><input type="text" id="rm_note"></div>
+      <div class="field"><label>Sales this covers</label><div id="rm_list"></div><div class="hint" id="rm_sum"></div></div>
+      <div class="field" data-pin-field><label>PIN</label><input type="password" id="rm_pin" placeholder="Enter access PIN" inputmode="numeric" data-pin-field>${rememberHtml('rm_rem')}</div>
+      <div class="hint" data-pin-note style="display:none;margin-bottom:12px;">Unlocked on this device.</div>
+      <div id="rm_err"></div>
+      <button type="submit" class="primary">Save remit</button>
+    </form>
+    <div class="section"><h2>Past remits</h2>
+      <div class="tbl-scroll"><table><thead><tr><th>Date</th><th>Partner</th><th>Amount</th><th>Reference</th><th>Covers</th><th>Check</th><th>Proof</th><th>Note</th></tr></thead><tbody>${past}</tbody></table></div>
+    </div>`;
+}
+function payStatsHtml(m){
+  return `<div class="pm-grid">
+    <div><span class="label">Collected</span><div class="pm-v">${money(m.collected)}</div></div>
+    <div><span class="label">Remitted</span><div class="pm-v">${money(m.remitted)}</div></div>
+    <div><span class="label">Left to remit</span><div class="pm-v">${money(m.left)}</div></div>
+    <div><span class="label">Cash not yet remitted</span><div class="pm-v">${money(m.cash)}</div></div></div>`;
+}
+function wireRemits(){
+  const form = document.getElementById('remitForm'); if(!form) return;
+  const $ = id => document.getElementById(id);
+  wireProofPicker('rm', '');
+  const list = $('rm_list'), sumEl = $('rm_sum');
+  const sumTicked = () => [...list.querySelectorAll('input:checked')].reduce((a, c) => a + (+c.dataset.amt || 0), 0);
+  const refreshSum = () => {
+    const ticked = Math.round(sumTicked() * 100) / 100, amt = parseFloat($('rm_amount').value) || 0, diff = Math.round((amt - ticked) * 100) / 100;
+    sumEl.innerHTML = pz(`Ticked ₱${ticked.toLocaleString()} · Amount ₱${amt.toLocaleString()} · ` + (diff === 0 ? 'Matches.' : `Difference ₱${Math.abs(diff).toLocaleString()} (${diff > 0 ? 'amount is more' : 'amount is less'}). You can still save.`));
+  };
+  const fillList = () => {
+    const rows = unremittedFor($('rm_partner').value);
+    list.innerHTML = rows.length ? rows.map(s => {
+      const r = state.inventory.find(x => x.code === s.skuCode);
+      return `<label class="tick"><input type="checkbox" value="${esc(s.id)}" data-amt="${+s.paid || 0}"><span><strong>${esc(s.customer)}</strong> · ${r ? paddleHtml(r) : esc(s.skuName)} · ${money(s.paid)} · <span class="sku">${esc(s.paymentMethod || '')}${s.paymentRef ? ' ' + esc(s.paymentRef) : ''}</span></span></label>`;
+    }).join('') : `<div class="nothing">Nothing waiting to be remitted for this partner.</div>`;
+    list.querySelectorAll('input').forEach(c => { c.onchange = refreshSum; });
+    refreshSum();
+  };
+  $('rm_partner').onchange = fillList; $('rm_amount').oninput = refreshSum; fillList();
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $('rm_err'), btn = form.querySelector('button[type="submit"]'); err.innerHTML = '';
+    const fail = (m) => { btn.disabled = false; err.innerHTML = `<div class="error">${m}</div>`; };
+    const partner = $('rm_partner').value, amount = Math.round((parseFloat($('rm_amount').value) || 0) * 100) / 100;
+    const date = $('rm_date').value, ref = $('rm_ref').value.trim(), note = $('rm_note').value.trim();
+    const ids = [...list.querySelectorAll('input:checked')].map(c => c.value), pin = pinValue('rm_pin');
+    if(!(amount > 0)) return fail('Enter the amount.');
+    if(!date) return fail('Choose the date.');
+    if(!ref) return fail('Enter the reference number.');
+    if(!pendingProof.rm) return fail('Add the transfer screenshot (Take photo or Choose from gallery).');
+    if(!ids.length) return fail('Tick at least one sale this remit covers.');
+    if(!pin) return fail('Enter the PIN.');
+    if(state.remits.some(r => normText(r.reference).trim() === normText(ref).trim())) return fail('That reference is already used by another remit.');
+    btn.disabled = true;
+    let path;
+    try{ path = await uploadProof('remits', pendingProof.rm.blob, pin); }
+    catch(ex){ return fail(describeUploadError(ex) + forgetIfSaved(!!$('rm_pin').value)); }
+    const pc = pinClientFor(pin);
+    try{
+      const a = await pc.from('remits').insert([{partner, amount, remit_date: date, reference: ref, proof_path: path, note: note || null}]).select('id,partner,amount,remit_date,reference,proof_path,note,created_at');
+      if(a.error || !a.data || !a.data.length){ await removeProof(path, pin); return fail(a.error && a.error.code === '23505' ? 'That reference is already used by another remit.' : describeSubmitError(a.error, 'save the remit') + forgetIfSaved(!!$('rm_pin').value)); }
+      const remit = a.data[0];
+      const links = ids.map(id => ({remit_id: remit.id, sale_id: isNaN(+id) ? id : (state.sales.find(s => String(s.id) === id) ? state.sales.find(s => String(s.id) === id).id : id)}));
+      const b = await pc.from('remit_sales').insert(links);
+      if(b.error){ await pc.from('remits').delete().eq('id', remit.id); await removeProof(path, pin); return fail(describeSubmitError(b.error, 'link the sales to the remit')); }
+      state.remits.unshift(remit); links.forEach(l => state.remitLinks.push(l));
+      maybeRemember('rm_rem', pin);
+      delete pendingProof.rm;
+      showToast('Remit saved'); render();
+    }catch(ex){ await removeProof(path, pin); fail(describeSubmitError(ex, 'save the remit')); }
+  };
+}
+
 async function init(){
   applyTheme(getPreferredTheme());
   document.querySelectorAll('.theme-toggle').forEach(btn => { btn.onclick = toggleTheme; });
+  const lockBtn = document.getElementById('lockBtn'); if(lockBtn) lockBtn.onclick = lockDevice;
+  const pm = document.getElementById('proofModal');
+  if(pm){ pm.onclick = (ev) => { if(ev.target === pm || ev.target.id === 'pmClose') closeProof(); }; }
+  document.addEventListener('keydown', (ev) => { if(ev.key === 'Escape') closeProof(); });
   await loadData();
   render();
 }
